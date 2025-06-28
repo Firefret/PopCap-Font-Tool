@@ -1,3 +1,5 @@
+import { removeBlack } from './removeBlack.js';
+
 const FILEINPUT = document.getElementById("fontdata");
 const FINEINPUTLABEL = document.getElementById("fontdatalabel");
 const FILESLIST = document.getElementById("fileslist");
@@ -52,10 +54,10 @@ class Font {
         }
     }
 
-    createImageWindow() {
-        const scrollDiv = document.createElement('div');
-        scrollDiv.id = "imageWindow";
-        scrollDiv.style.cssText = `
+    async createImageWindow() {
+    const scrollDiv = document.createElement('div');
+    scrollDiv.id = "imageWindow";
+    scrollDiv.style.cssText = `
         width: 700px;
         height: 200px;
         overflow-x: scroll;
@@ -74,20 +76,37 @@ class Font {
         display: inline-block;
     `;
 
-    // Add each image as an overlayed layer
-    this.images.forEach(image => {
+    // Sort images so that Outline images come first (will be rendered at the bottom)
+    const sortedImages = [...this.images].sort((a, b) => {
+        const aIsOutline = a.name.endsWith('Outline.png');
+        const bIsOutline = b.name.endsWith('Outline.png');
+        if (aIsOutline && !bIsOutline) return -1;
+        if (!aIsOutline && bIsOutline) return 1;
+        return 0;
+    });
+
+    // Process images and add them as overlayed layers
+    for (const image of sortedImages) {
         const img = document.createElement('img');
-        img.src = URL.createObjectURL(image);
+        
+        // If filename starts with underscore, process with removeBlack
+        if (image.name.startsWith('_')) {
+            img.src = await removeBlack(image);
+        } else {
+            img.src = URL.createObjectURL(image);
+        }
+
         img.style.cssText = `
             position: absolute;
             top: 0;
             left: 0;
             height: 100%;
             width: auto;
+            z-index: ${image.name.endsWith('Outline.png') ? 1 : 2};
         `;
         
         imageContainer.appendChild(img);
-    });
+    }
 
     scrollDiv.appendChild(imageContainer);
 
