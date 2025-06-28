@@ -77,8 +77,7 @@ class Font {
     // Add each image as an overlayed layer
     this.images.forEach(image => {
         const img = document.createElement('img');
-        const url = URL.createObjectURL(image);
-        img.src = url;
+        img.src = URL.createObjectURL(image);
         img.style.cssText = `
             position: absolute;
             top: 0;
