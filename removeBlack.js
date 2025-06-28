@@ -52,7 +52,7 @@ export const removeBlack = async (imageFile) => {
 
             img.onerror = (error) => {
                 URL.revokeObjectURL(img.src);
-                reject(new Error('Failed to load image'));
+                reject(error);
             };
 
         } catch (error) {
