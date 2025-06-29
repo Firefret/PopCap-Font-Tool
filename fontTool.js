@@ -514,11 +514,15 @@ class Font {
 
             // Parse character list
             const charList = [];
-            if (sections.charList) {
-                const charRegex = /'(.?)'/g;
+            if (sections.charList && typeof sections.charList[1] === 'string') {
+                const charRegex = /'(.?)'|"'"/g;
                 let charMatch;
                 while ((charMatch = charRegex.exec(sections.charList[1])) !== null) {
-                    charList.push(charMatch[1]);
+                    if (charMatch[0] === "\"'\"") {
+                        charList.push("'");
+                    } else {
+                        charList.push(charMatch[1]);
+                    }
                 }
             }
 
