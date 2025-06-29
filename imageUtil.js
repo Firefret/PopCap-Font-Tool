@@ -3,7 +3,7 @@
  * @param {File} imageFile - The image file to process
  * @returns {Promise<string>} - URL of the processed image
  */
-export const removeBlack = async (imageFile) => {
+export default async function removeBlack(imageFile) {
     return new Promise((resolve, reject) => {
         try {
             // Create Image object
