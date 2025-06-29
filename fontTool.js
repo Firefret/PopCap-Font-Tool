@@ -13,13 +13,9 @@ class Font {
         this.text = text;
         this.images = images;
         this.createFontPreview();
-        
-        // Assign the merged font image to the mergedFont property
-        this.mergeFontImages().then(mergedFont => {
-            this.mergedFont = mergedFont;
-        }).catch(error => {
-            console.error("Error merging font images:", error);
-        });
+
+        // Initialize the mergedFont property
+        this.initMergedFont();
 
         // Use an async IIFE to handle the async font parsing
         (async () => {
@@ -33,6 +29,14 @@ class Font {
                 console.error("Error initializing font:", error);
             }
         })();
+    }
+
+    async initMergedFont() {
+        try {
+            this.mergedFont = await this.mergeFontImages();
+        } catch (error) {
+            console.error("Error merging font images:", error);
+        }
     }
 
     async mergeFontImages() {
@@ -58,19 +62,19 @@ class Font {
             canvas.width = firstImage.width;
             canvas.height = firstImage.height;
             const ctx = canvas.getContext('2d');
-            
+
             // Release the URL object
             URL.revokeObjectURL(firstImage.src);
 
             // Process and draw each image on the canvas
             for (const image of sortedImages) {
                 const img = new Image();
-                
+
                 // Create a promise for each image loading
                 await new Promise((resolve, reject) => {
                     img.onload = () => resolve();
                     img.onerror = () => reject(new Error(`Failed to load image: ${image.name}`));
-                    
+
                     // Check if image needs black removal
                     if (image.name.startsWith('_')) {
                         // Use removeBlack for images starting with underscore
@@ -81,10 +85,10 @@ class Font {
                         img.src = URL.createObjectURL(image);
                     }
                 });
-                
+
                 // Draw the image on the canvas
                 ctx.drawImage(img, 0, 0);
-                
+
                 // Release the URL object
                 if (!image.name.startsWith('_')) {
                     URL.revokeObjectURL(img.src);
@@ -160,6 +164,7 @@ class Font {
             FILEINPUT.value = null;
         }
     }
+
 
     drawTable() {
         // Remove any existing tables
