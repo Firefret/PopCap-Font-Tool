@@ -3,7 +3,9 @@
  * @param {Object} fontData - The parsed font data object containing character information
  * @returns {HTMLElement} The created table element
  */
+let fontGlobal;
 function drawTable(fontData) {
+    fontGlobal = fontData;
     if (!fontData || !fontData.characters || fontData.characters.length === 0) {
         console.warn('No valid font data provided to draw table');
         return null;
@@ -95,25 +97,58 @@ function drawTable(fontData) {
             charCell.textContent = char.character;
         }
         row.appendChild(charCell);
+
         
         // Width cell
         const widthCell = document.createElement('td');
         widthCell.style.padding = '12px 15px';
-        widthCell.textContent = char.width;
+        //widthCell.textContent = char.width;
         row.appendChild(widthCell);
+        const widthValue = document.createElement("input");
+        widthValue.type = "text";
+        widthValue.value = char.width;
+        widthValue.addEventListener("keyup", function(event) {
+            setTimeout(()=>null, 0)
+            fontData.characters[index].width = parseInt(event.target.value);
+            console.log(fontData)
+            fontInstance.serializeFontData()
+        })
+        widthCell.appendChild(widthValue);
+
         
         // Rectangle cell
         const rectCell = document.createElement('td');
         rectCell.style.padding = '12px 15px';
-        rectCell.textContent = char.rect.join(', ');
         row.appendChild(rectCell);
+        const rectValue = document.createElement("input");
+        rectValue.type = "text";
+        rectValue.value = char.rect;
+        rectValue.addEventListener("keyup", function(event) {
+            fontData.characters[index].rect = event.target.value.split(",");
+            console.log(fontData)
+            fontInstance.serializeFontData()
+        })
+        rectCell.appendChild(rectValue);
         
         // Offset cell (if applicable)
         if (hasOffsets) {
             const offsetCell = document.createElement('td');
             offsetCell.style.padding = '12px 15px';
-            offsetCell.textContent = char.offset ? char.offset.join(', ') : 'N/A';
+            //offsetCell.textContent = char.offset.join(', ');
             row.appendChild(offsetCell);
+            const offsetValue = document.createElement("input");
+            offsetValue.type = "text";
+            offsetValue.value = char.offset;
+            offsetValue.addEventListener("keyup", function(event) {
+                fontData.characters[index].offset = event.target.value.split(",");
+                fontData.characters[index].offset.forEach((val, ind) => {
+                    fontData.characters[index].offset[ind] = parseInt(val);
+                })
+                console.dir(fontData);
+                fontInstance.serializeFontData()
+            })
+            offsetCell.appendChild(offsetValue)
+
         }
         
         tbody.appendChild(row);
@@ -158,6 +193,7 @@ function createKerningTable(kerningData, container) {
         flex: 1;
         min-width: 250px;
         max-width: 400px;
+        margin-left: 150px;
     `;
     
     // Create heading for kerning table
@@ -207,17 +243,87 @@ function createKerningTable(kerningData, container) {
         `;
         
         // Pair cell
+        let originalPair = pair;
+
+// Pair cell
         const pairCell = document.createElement('td');
         pairCell.style.padding = '12px 15px';
-        pairCell.textContent = pair;
         row.appendChild(pairCell);
-        
-        // Adjustment cell
+
+        const pairValueInput = document.createElement("input");
+        pairValueInput.type = "text";
+        pairValueInput.value = originalPair; // Initialize with the original pair
+        pairValueInput.style.width = '100px'; // Example styling
+        pairValueInput.addEventListener("keyup", function(event) { // Use 'change' for better UX after input is finalized
+            const newPair = event.target.value;
+
+            // Only proceed if the new pair is different and not empty
+            if (newPair !== originalPair && newPair.trim() !== '') {
+                // Check if the new pair already exists to avoid overwriting
+                if (kerningData.hasOwnProperty(newPair)) {
+                    console.warn(`Kerning pair "${newPair}" already exists. Cannot rename.`);
+                    // Optionally, revert the input value or show an error message to the user
+                    event.target.value = originalPair;
+                    return;
+                }
+
+                // Get the current adjustment value associated with the original pair
+                // Add the new pair with the old adjustment
+                kerningData[newPair] = kerningData[originalPair];
+
+                // Delete the old pair
+                delete kerningData[originalPair];
+
+                // IMPORTANT: Update the 'originalPair' variable in the closure
+                // so subsequent changes to adjustmentValueInput correctly reference the new key.
+                // This is crucial if you're not re-rendering the entire row.
+                // For a full React-like component, you'd typically re-render the row.
+                // For simple DOM manipulation, this update is necessary.
+                pair = newPair; // Update the 'pair' variable in the outer scope if it's used elsewhere
+                originalPair = newPair; // Update the local 'originalPair' for this closure
+
+                console.log("Kerning pair renamed:", originalPair, "->", newPair);
+                console.dir(kerningData);
+            } else if (newPair.trim() === '') {
+                console.warn("Kerning pair cannot be empty. Reverting to original.");
+                event.target.value = originalPair;
+            }
+            if(event.target.value.length !== 2){
+                delete kerningData[pair];
+            }
+            kerningData[pair] = parseInt(pairValueInput.parentElement.nextElementSibling.lastChild.value);
+            fontInstance.serializeFontData()
+            console.dir(kerningData);
+        });
+        pairCell.appendChild(pairValueInput);
+
+// Adjustment cell
         const adjustmentCell = document.createElement('td');
         adjustmentCell.style.padding = '12px 15px';
-        adjustmentCell.textContent = adjustment;
         row.appendChild(adjustmentCell);
-        
+
+        const adjustmentValueInput = document.createElement("input");
+        adjustmentValueInput.type = "number"; // Use type="number" for numerical input
+        adjustmentValueInput.value = parseInt(adjustment);
+        adjustmentValueInput.style.width = '60px'; // Example styling
+        adjustmentValueInput.addEventListener("keyup", function(event) { // Use 'change' for better UX
+            const newAdjustment = parseInt(event.target.value);
+            if (!isNaN(newAdjustment)) {
+                // Use the 'pair' variable that was potentially updated by pairValueInput's change listener
+                kerningData[pair] = newAdjustment;
+                console.log(`Adjustment for "${pair}" updated to: ${newAdjustment}`);
+                console.dir(kerningData);
+            } else {
+                console.warn("Invalid adjustment value. Please enter a number.");
+                event.target.value = ""; // Revert to last valid value
+                kerningData[pair] = 0;
+            }
+            fontInstance.serializeFontData()
+            console.dir(kerningData);
+
+        });
+        adjustmentCell.appendChild(adjustmentValueInput);
+
         tbody.appendChild(row);
     });
     

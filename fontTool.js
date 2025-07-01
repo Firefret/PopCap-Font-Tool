@@ -1,18 +1,21 @@
-import { mergeFontImages } from './imageUtil.js';
 import drawTable from './tableBuilder.js';
+import * as windows1251 from './windows-1251.js';
 
 const FILEINPUT = document.getElementById("fontdata");
 const FINEINPUTLABEL = document.getElementById("fontdatalabel");
 const FILESLIST = document.getElementById("fileslist");
-//const UPLOADFILES = document.getElementById("uploadfiles");
+const UPLOADFILES = document.getElementById("uploadfiles");
 
 let fontInstance;
+
 let fontFiles = [];
 
 class Font {
-    constructor(text, images) {
+    constructor(text/*, images*/) {
+        this.appendix = "";
+        this.serialized = "";
         this.text = text;
-        this.images = images;
+        //this.images = images;
 
         // Initialize the mergedFont property
         this.mergedFont = null;
@@ -31,12 +34,23 @@ class Font {
         })();
         
         // Call mergeFontImages and then createFontPreview when it's done
-        mergeFontImages(this.images).then(mergedFont => {
+       /* mergeFontImages(this.images).then(mergedFont => {
             this.mergedFont = mergedFont;
             this.createFontPreview();
         }).catch(error => {
             console.error("Error in font merging or preview creation:", error);
-        });
+        });*/
+        this.downloadButton = document.createElement('button');
+        this.downloadButton.textContent="Save file";
+        this.downloadButton.id = "downloadButton";
+
+        this.downloadButton.onclick = () => {
+            this.downloadSerializedFontFile(this.text.name)
+        }
+        UPLOADFILES.appendChild(this.downloadButton);
+        UPLOADFILES.style.position = "sticky";
+        UPLOADFILES.style.top = "5px"
+        UPLOADFILES.style.overflow = "auto"
     }
 
     async createFontPreview() {
@@ -54,14 +68,13 @@ class Font {
         const scrollDiv = document.createElement('div');
         scrollDiv.id = "imageWindow";
         scrollDiv.style.cssText = `
-    width: 700px;
-    height: 200px;
-    overflow-x: scroll;
+    height: 100px;
+    overflow-x: auto;
     overflow-y: hidden;
     white-space: nowrap;
     background-color: lightgrey;
     border: 1px solid black;
-    padding: 10px;
+    padding: 10px 0;
     display: inline-block;
 `;
 
@@ -74,12 +87,13 @@ class Font {
 `;
 
         // No need to wait for mergedFont - we know it's ready because 
-        // createFontPreview is only called after initMergedFont resolves
+        // createFontPreview is only called after mergeFontImages resolves
         
         const img = document.createElement('img');
         console.log(this.mergedFont);
 
         if (this.mergedFont) {
+            img.style.height = '100%'; // Make image fill container height
             img.src = URL.createObjectURL(this.mergedFont);
             imageContainer.appendChild(img);
             scrollDiv.appendChild(imageContainer);
@@ -89,7 +103,9 @@ class Font {
             firstImg.onload = () => {
                 const aspectRatio = firstImg.naturalWidth / firstImg.naturalHeight;
                 const containerHeight = scrollDiv.clientHeight - 20; // subtract padding
-                imageContainer.style.width = `${containerHeight * aspectRatio}px`;
+                const renderedWidth = containerHeight * aspectRatio;
+                imageContainer.style.width = `${renderedWidth}px`;
+                scrollDiv.style.width = `${Math.min(renderedWidth, 700)}px`;
             };
 
             // Get the upload element
@@ -112,11 +128,26 @@ class Font {
                 topRow.appendChild(uploadElement);
             }
 
-            // Add the image preview to the top row
-            topRow.appendChild(scrollDiv);
+            // Create a column for the previews to sit in
+            let previewColumn = document.getElementById('previewColumn');
+            if (!previewColumn) {
+                previewColumn = document.createElement('div');
+                previewColumn.id = 'previewColumn';
+                previewColumn.style.cssText = `
+                    display: flex;
+                    flex-direction: column;
+                    gap: 10px;
+                `;
+                topRow.appendChild(previewColumn);
+            }
 
-            // Make upload area match the height of the preview
-            uploadElement.style.height = scrollDiv.style.height;
+            // Add the image preview to the column
+            previewColumn.appendChild(scrollDiv);
+
+            // Make upload area twice the height of the preview
+            uploadElement.style.height = `${scrollDiv.getBoundingClientRect().height * 2}px`;
+
+            this.createLivePreviewElement();
 
             // Cleanup object URLs on unload
             window.addEventListener('unload', () => {
@@ -125,6 +156,66 @@ class Font {
                     URL.revokeObjectURL(img.src);
                 });
             });
+        }
+    }
+
+    createLivePreviewElement() {
+        const LIVE_PREVIEW_WRAPPER_ID = 'livePreviewWrapper';
+        // Remove previous live preview element if it exists
+        const existingPreview = document.getElementById(LIVE_PREVIEW_WRAPPER_ID);
+        if (existingPreview) {
+            existingPreview.remove();
+        }
+
+        // Create the main wrapper div
+        const livePreviewWrapper = document.createElement('div');
+        livePreviewWrapper.id = LIVE_PREVIEW_WRAPPER_ID;
+
+        // Try to match the width of the image preview
+        const imagePreview = document.getElementById('imageWindow');
+        const wrapperWidth = imagePreview ? imagePreview.style.width : 'auto';
+
+        livePreviewWrapper.style.cssText = `
+        display: flex;
+        flex-direction: column;
+        width: ${wrapperWidth};
+        max-width: 700px;
+    `;
+
+        // Create the div that will show the rendered text (similar to scrollDiv)
+        const livePreviewArea = document.createElement('div');
+        livePreviewArea.id = 'livePreviewArea';
+        livePreviewArea.style.cssText = `
+        height: 100px;
+        overflow-x: auto;
+        overflow-y: hidden;
+        white-space: nowrap;
+        background-color: lightgrey;
+        border: 1px solid black;
+        padding: 10px 0;
+        box-sizing: border-box;
+    `;
+
+        // Create the input field
+        const inputField = document.createElement('input');
+        inputField.type = 'text';
+        inputField.id = 'livePreviewInput';
+        inputField.placeholder = 'Type here for live preview...';
+        inputField.style.cssText = `
+        margin-top: 5px;
+        width: 100%;
+        padding: 5px;
+        box-sizing: border-box;
+    `;
+
+        // Assemble the element
+        livePreviewWrapper.appendChild(livePreviewArea);
+        livePreviewWrapper.appendChild(inputField);
+
+        // Add it to the preview column created in createFontPreview
+        const previewColumn = document.getElementById('previewColumn');
+        if (previewColumn) {
+            previewColumn.appendChild(livePreviewWrapper);
         }
     }
 
@@ -141,16 +232,37 @@ class Font {
             characters: []
         };
 
+        // --- New: Track matched segments for appendix ---
+        const matchedSegments = []; // Stores objects like { start: index, end: index }
+
+        // Helper to add a segment if a match is found
+        const addMatchedSegment = (match) => {
+            if (match && match.index !== undefined) {
+                matchedSegments.push({
+                    start: match.index,
+                    end: match.index + match[0].length
+                });
+            }
+        };
+        // --- End New ---
+
         try {
-            // Extract all sections using more flexible regex patterns
-            const sections = {
-                charList: fileContent.match(/Define\s+CharList\s*\n\s*\(([\s\S]*?)\);/),
-                widthList: fileContent.match(/Define\s+WidthList\s*\n\s*\(([\s\S]*?)\);/),
-                rectList: fileContent.match(/Define\s+RectList\s*\n\s*\(([\s\S]*?)\);/),
-                offsetList: fileContent.match(/Define\s+OffsetList\s*\n\s*\(([\s\S]*?)\);/),
-                kerningPairs: fileContent.match(/Define\s+KerningPairs\s*\n\s*\(([\s\S]*?)\);/),
-                kerningValues: fileContent.match(/Define\s+KerningValues\s*\(([\s\S]*?)\);/)
+            // Define regex patterns and store matches
+            const sectionRegexes = {
+                charList: /Define\s+CharList\s*\n\s*\(([\s\S]*?)\);/m,
+                widthList: /Define\s+WidthList\s*\n\s*\(([\s\S]*?)\);/m,
+                rectList: /Define\s+RectList\s*\n\s*\(([\s\S]*?)\);/m,
+                offsetList: /Define\s+OffsetList\s*\n\s*\(([\s\S]*?)\);/m,
+                kerningPairs: /Define\s+KerningPairs\s*\n\s*\(([\s\S]*?)\);/m,
+                kerningValues: /Define\s+KerningValues\s*\(([\s\S]*?)\);/m // Note: This one might not have the newline after "Define...;"
             };
+
+            const sections = {};
+            for (const key in sectionRegexes) {
+                const match = fileContent.match(sectionRegexes[key]);
+                sections[key] = match;
+                addMatchedSegment(match); // Record the matched segment
+            }
 
             // Check if all required sections were found
             const requiredSections = ['charList', 'widthList', 'rectList'];
@@ -262,12 +374,226 @@ class Font {
                 }
             }
 
+            // --- New: Determine the appendix ---
+
+            // 1. Sort the segments by their start index
+            matchedSegments.sort((a, b) => a.start - b.start);
+
+            // 2. Merge overlapping or adjacent segments
+            const mergedSegments = [];
+            if (matchedSegments.length > 0) {
+                let current = { ...matchedSegments[0] }; // Start with the first segment
+
+                for (let i = 1; i < matchedSegments.length; i++) {
+                    const next = matchedSegments[i];
+                    // If the next segment overlaps or is adjacent to the current one
+                    if (next.start <= current.end + 1) { // +1 to account for potential single space/newline separation
+                        current.end = Math.max(current.end, next.end); // Extend the current segment
+                    } else {
+                        mergedSegments.push(current); // Current segment is complete, add it
+                        current = { ...next }; // Start a new current segment
+                    }
+                }
+                mergedSegments.push(current); // Add the last current segment
+            }
+
+            // 3. Extract unparsed parts (appendix)
+            let appendixParts = [];
+            let lastEnd = 0; // Tracks the end of the last parsed segment
+
+            for (const segment of mergedSegments) {
+                if (segment.start > lastEnd) {
+                    // There's a gap between the last parsed segment and the current one
+                    appendixParts.push(fileContent.substring(lastEnd, segment.start));
+                }
+                lastEnd = Math.max(lastEnd, segment.end); // Update lastEnd to the end of the current segment
+            }
+
+            // If there's content after the last parsed segment
+            if (lastEnd < fileContent.length) {
+                appendixParts.push(fileContent.substring(lastEnd));
+            }
+
+            // Join all unparsed parts and assign to this.appendix
+            this.appendix = appendixParts.join('').trim();
+            // --- End New ---
+
             console.log("Font parsed successfully:", result);
+            console.log("Appendix:", this.appendix); // Log the appendix
             return result;
         } catch (error) {
             console.error("Error parsing font file:", error);
             throw new Error(`Failed to parse font file: ${error.message}`);
         }
+    }
+
+     serializeFontData(data = this.fontData, appendix = this.appendix) {
+        let serializedString = "";
+        const INDENT = "  "; // Two spaces for indentation
+
+        // Helper to format lists with wrapping, including internal commas and newlines
+        const formatList = (items, itemFormatter, itemsPerLine, indentLevel = 1, key = null) => {
+            let contentLines = [];
+            let currentLineItems = [];
+            let currentLineLength = 0;
+
+            // Adjust base and subsequent indentation based on key
+            // The example output for WidthList has a base indent of 2 spaces, and subsequent lines 4 spaces.
+            // For others, it's 2 spaces for base, and 4 spaces for subsequent.
+            const baseIndent = key === "width" ? INDENT.repeat(2) : INDENT.repeat(indentLevel);
+            const subsequentIndent = key === "width" ? INDENT.repeat(4) : INDENT.repeat(indentLevel + 2);
+
+            for (let i = 0; i < items.length; i++) {
+                const itemStr = itemFormatter(items[i]);
+                // Estimate length including comma and space for items within a line
+                const estimatedItemLength = itemStr.length + (i < items.length - 1 ? 2 : 0); // +2 for ", "
+
+                // Check if adding this item exceeds line length or items per line, and if it's not the very first item on a line
+                if ((currentLineLength + estimatedItemLength > 78 && currentLineItems.length > 0) || currentLineItems.length >= itemsPerLine) {
+                    contentLines.push(currentLineItems.join(', '));
+                    currentLineItems = [];
+                    currentLineLength = 0;
+                }
+
+                currentLineItems.push(itemStr);
+                currentLineLength += estimatedItemLength;
+            }
+            if (currentLineItems.length > 0) {
+                contentLines.push(currentLineItems.join(', '));
+            }
+
+            // Now, join the content lines with proper indentation and commas
+            // The last line will not have a trailing comma, which is handled by the overall structure
+            return contentLines.map((line, index) => {
+                const linePrefix = index === 0 ? baseIndent : subsequentIndent;
+                return linePrefix + line;
+            }).join(',\n'); // Join lines with comma and newline
+        };
+
+        // --- Define CharList ---
+        if (data.characters && data.characters.length > 0) {
+            const charItems = data.characters.map(charObj => {
+                // Handle the special case for single quote character
+                if (charObj.character === "'") {
+                    return `\"'\"`; // Represent as "'"
+                }
+                return `'${charObj.character}'`;
+            });
+
+            let formattedChars = formatList(charItems, item => item, 17, 1); // Indent level 1
+            // Remove the trailing comma from the last line if it exists
+            if (formattedChars.endsWith(',')) {
+                formattedChars = formattedChars.slice(0, -1);
+            }
+            serializedString += `Define CharList\n  (\n${formattedChars}\n  );\n\n`;
+        }
+
+        // --- Define WidthList ---
+        if (data.characters && data.characters.length > 0) {
+            const widthItems = data.characters.map(charObj => charObj.width);
+            const paddedWidths = widthItems.map(w => String(w).padStart(3, ' ')); // Pad to 3 characters
+
+            let formattedWidths = formatList(paddedWidths, item => item, 16, 1, "width"); // Indent level 1, key "width"
+            // Remove the trailing comma from the last line if it exists
+            if (formattedWidths.endsWith(',')) {
+                formattedWidths = formattedWidths.slice(0, -1);
+            }
+            serializedString += `Define WidthList\n  (\n${formattedWidths}\n  );\n\n`;
+        }
+
+        // --- Define RectList ---
+        if (data.characters && data.characters.length > 0) {
+            const rectItems = data.characters.map(charObj => charObj.rect);
+            const formattedRects = rectItems.map(rect => {
+                // Pad each number in the rect to ensure consistent spacing
+                const [x, y, w, h] = rect;
+                return `(${String(x).padStart(4, ' ')}, ${String(y).padStart(2, ' ')}, ${String(w).padStart(2, ' ')}, ${String(h).padStart(2, ' ')})`;
+            });
+
+            let formattedRectList = formatList(formattedRects, item => item, 4, 1); // Indent level 1
+            // Remove the trailing comma from the last line if it exists
+            if (formattedRectList.endsWith(',')) {
+                formattedRectList = formattedRectList.slice(0, -1);
+            }
+            serializedString += `Define RectList\n  (\n${formattedRectList}\n  );\n\n`;
+        }
+
+        // --- Define OffsetList (Optional) ---
+        // Check if any character has an offset defined
+        const hasOffsets = data.characters.some(charObj => charObj.offset !== undefined);
+        if (hasOffsets) {
+            const offsetItems = data.characters.map(charObj => charObj.offset || [0, 0]); // Default to [0,0] if missing
+            const formattedOffsets = offsetItems.map(offset => {
+                const [dx, dy] = offset;
+                // Pad numbers to ensure consistent spacing for offsets
+                return `(${String(dx).padStart(3, ' ')}, ${String(dy).padStart(2, ' ')})`;
+            });
+
+            let formattedOffsetList = formatList(formattedOffsets, item => item, 8, 1); // Indent level 1
+            // Remove the trailing comma from the last line if it exists
+            if (formattedOffsetList.endsWith(',')) {
+                formattedOffsetList = formattedOffsetList.slice(0, -1);
+            }
+            serializedString += `Define OffsetList\n  (\n${formattedOffsetList}\n  );\n\n`;
+        }
+
+        // --- Define KerningPairs and KerningValues (Optional) ---
+        if (data.kerning && Object.keys(data.kerning).length > 0) {
+            const kerningPairs = Object.keys(data.kerning);
+            const kerningValues = Object.values(data.kerning);
+
+            // Kerning Pairs
+            const formattedKerningPairs = kerningPairs.map(pair => `"${pair}"`);
+            let serializedKerningPairs = formatList(formattedKerningPairs, item => item, 8, 1); // Indent level 1
+            // Remove the trailing comma from the last line if it exists
+            if (serializedKerningPairs.endsWith(',')) {
+                serializedKerningPairs = serializedKerningPairs.slice(0, -1);
+            }
+            serializedString += `Define KerningPairs\n  (\n${serializedKerningPairs}\n  );\n\n`;
+
+            // Kerning Values
+            const paddedKerningValues = kerningValues.map(val => String(val).padStart(3, ' ')); // Pad to 3 characters
+            let serializedKerningValues = formatList(paddedKerningValues, item => item, 16, 1); // Indent level 1
+            // Remove the trailing comma from the last line if it exists
+            if (serializedKerningValues.endsWith(',')) {
+                serializedKerningValues = serializedKerningValues.slice(0, -1);
+            }
+            serializedString += `Define KerningValues\n  (\n${serializedKerningValues}\n  );\n\n`;
+        }
+
+        // --- Append the appendix ---
+        if (appendix && appendix.length > 0) {
+            serializedString += appendix + "\n"; // Add appendix, followed by a newline
+        }
+
+        // ** NEW: Encode the serialized string to Windows-1251 **
+         // This returns a Uint8Array
+        // To turn it into a Blob, you'll typically use:
+        // const blob = new Blob([encodedData], { type: 'application/octet-stream' });
+        // or if it's meant to be a text file with windows-1251 encoding:
+        // const blob = new Blob([encodedData], { type: 'text/plain; charset=windows-1251' });
+
+        // The function is currently returning a string. If you need to return the encoded Uint8Array
+        // or a Blob directly, you would modify the return statement.
+        // For now, I'll return the encoded Uint8Array as it's the direct result of the encoding step.
+        return windows1251.encode(serializedString); // Return the Uint8Array of windows-1251 encoded bytes
+    }
+
+    downloadSerializedFontFile(filename) {
+        let content = this.serializeFontData();
+        console.log(content);
+        const blob = new Blob([content], { type: 'text/plain;charset=windows-1251' }); // Specify Windows-1251 encoding
+        const url = URL.createObjectURL(blob);
+
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a); // Append to body is necessary for Firefox
+        a.click();
+
+        // Clean up: remove the element and revoke the URL
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
     }
 }
 
@@ -278,6 +604,10 @@ FILEINPUT.onchange = (event) => {
 
 // Add this function to handle file selection
 function handleFileSelection(event) {
+    let downloadButton = document.getElementById('downloadButton');
+    if (downloadButton) {
+        downloadButton.remove()
+    }
     // Clear the previous file list
     FILESLIST.innerHTML = '';
 
@@ -308,29 +638,32 @@ function handleFileSelection(event) {
         }
     }
 
-    if (fontImages.length > 0 && fontText) {
+    /*if (fontImages.length > 0 && fontText) {
         for (let image of fontImages) {
             if (!image.name.includes(fontName)) {
                 FINEINPUTLABEL.innerHTML = "One or all of the image file names do not match the .txt file name <br>";
                 FILEINPUT.value = null;
                 return;
             }
-        }
+        } */
+    if(fontText){
 
         let txtName = document.createElement("li");
         txtName.textContent = fontText.name;
         FILESLIST.appendChild(txtName);
 
-        for (let image of fontImages) {
+        /*for (let image of fontImages) {
             let imgName = document.createElement("li");
             imgName.textContent = image.name;
             FILESLIST.appendChild(imgName);
-        }
+        }*/
 
         FINEINPUTLABEL.innerHTML = "Files Selected <br>";
-        fontInstance = new Font(fontText, fontImages);
+        fontInstance = new Font(fontText/*, fontImages*/);
+        window.fontInstance = fontInstance;
+        console.dir(fontInstance);
     } else {
-        FINEINPUTLABEL.innerHTML = "Please select a .txt file and png image files <br>";
+        FINEINPUTLABEL.innerHTML = "Please select a .txt file <br>";
         FILEINPUT.value = null;
     }
 }
