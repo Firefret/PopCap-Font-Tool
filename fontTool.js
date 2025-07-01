@@ -1,5 +1,6 @@
 import drawTable from './tableBuilder.js';
 import * as windows1251 from './windows-1251.js';
+import * as imageUtil from './imageUtil.js';
 
 const FILEINPUT = document.getElementById("fontdata");
 const FINEINPUTLABEL = document.getElementById("fontdatalabel");
@@ -11,11 +12,11 @@ let fontInstance;
 let fontFiles = [];
 
 class Font {
-    constructor(text/*, images*/) {
+    constructor(text, images) {
         this.appendix = "";
-        this.serialized = "";
+        //this.serialized = "";
         this.text = text;
-        //this.images = images;
+        this.images = images;
 
         // Initialize the mergedFont property
         this.mergedFont = null;
@@ -34,12 +35,12 @@ class Font {
         })();
         
         // Call mergeFontImages and then createFontPreview when it's done
-       /* mergeFontImages(this.images).then(mergedFont => {
+        imageUtil.mergeFontImages(this.images).then(mergedFont => {
             this.mergedFont = mergedFont;
             this.createFontPreview();
         }).catch(error => {
             console.error("Error in font merging or preview creation:", error);
-        });*/
+        });
         this.downloadButton = document.createElement('button');
         this.downloadButton.textContent="Save file";
         this.downloadButton.id = "downloadButton";
@@ -638,32 +639,33 @@ function handleFileSelection(event) {
         }
     }
 
-    /*if (fontImages.length > 0 && fontText) {
+    if (fontImages.length > 0 && fontText) {
         for (let image of fontImages) {
             if (!image.name.includes(fontName)) {
                 FINEINPUTLABEL.innerHTML = "One or all of the image file names do not match the .txt file name <br>";
                 FILEINPUT.value = null;
                 return;
             }
-        } */
-    if(fontText){
+        }
+        if (fontText) {
 
-        let txtName = document.createElement("li");
-        txtName.textContent = fontText.name;
-        FILESLIST.appendChild(txtName);
+            let txtName = document.createElement("li");
+            txtName.textContent = fontText.name;
+            FILESLIST.appendChild(txtName);
 
-        /*for (let image of fontImages) {
-            let imgName = document.createElement("li");
-            imgName.textContent = image.name;
-            FILESLIST.appendChild(imgName);
-        }*/
+            for (let image of fontImages) {
+                let imgName = document.createElement("li");
+                imgName.textContent = image.name;
+                FILESLIST.appendChild(imgName);
+            }
 
-        FINEINPUTLABEL.innerHTML = "Files Selected <br>";
-        fontInstance = new Font(fontText/*, fontImages*/);
-        window.fontInstance = fontInstance;
-        console.dir(fontInstance);
-    } else {
-        FINEINPUTLABEL.innerHTML = "Please select a .txt file <br>";
-        FILEINPUT.value = null;
+            FINEINPUTLABEL.innerHTML = "Files Selected <br>";
+            fontInstance = new Font(fontText, fontImages);
+            window.fontInstance = fontInstance;
+            console.dir(fontInstance);
+        } else {
+            FINEINPUTLABEL.innerHTML = "Please select a .txt file <br>";
+            FILEINPUT.value = null;
+        }
     }
 }
