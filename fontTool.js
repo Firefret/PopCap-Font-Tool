@@ -1,38 +1,60 @@
-import {removeBlack} from './removeBlack.js';
+import drawTable from './tableBuilder.js';
+import * as windows1251 from './windows-1251.js';
 
 const FILEINPUT = document.getElementById("fontdata");
 const FINEINPUTLABEL = document.getElementById("fontdatalabel");
 const FILESLIST = document.getElementById("fileslist");
-//const UPLOADFILES = document.getElementById("uploadfiles");
+const UPLOADFILES = document.getElementById("uploadfiles");
 
 let fontInstance;
+
 let fontFiles = [];
 
 class Font {
-    constructor(text, images) {
+    constructor(text/*, images*/) {
+        this.appendix = "";
+        this.serialized = "";
         this.text = text;
-        this.images = images;
-        this.createFontPreview();
-        
+        //this.images = images;
+
+        // Initialize the mergedFont property
+        this.mergedFont = null;
+
         // Use an async IIFE to handle the async font parsing
         (async () => {
             try {
                 this.fontData = await this.parseFontTxt(text);
                 console.dir(this.fontData);
-                
+
                 // Draw tables after font data is available
-                this.drawTable();
+                drawTable(this.fontData);
             } catch (error) {
                 console.error("Error initializing font:", error);
             }
         })();
+        
+        // Call mergeFontImages and then createFontPreview when it's done
+       /* mergeFontImages(this.images).then(mergedFont => {
+            this.mergedFont = mergedFont;
+            this.createFontPreview();
+        }).catch(error => {
+            console.error("Error in font merging or preview creation:", error);
+        });*/
+        this.downloadButton = document.createElement('button');
+        this.downloadButton.textContent="Save file";
+        this.downloadButton.id = "downloadButton";
+
+        this.downloadButton.onclick = () => {
+            this.downloadSerializedFontFile(this.text.name)
+        }
+        UPLOADFILES.appendChild(this.downloadButton);
+        UPLOADFILES.style.position = "sticky";
+        UPLOADFILES.style.top = "5px"
+        UPLOADFILES.style.overflow = "auto"
     }
 
-    getFilesEvent(event) {
-        // Clear the previous file list
-        FILESLIST.innerHTML = '';
-
-        // Remove the previous image preview if it exists
+    async createFontPreview() {
+        // Remove previous image preview if it exists
         const existingPreview = document.getElementById('imageWindow');
         if (existingPreview) {
             // Clean up any object URLs to prevent memory leaks
@@ -43,362 +65,159 @@ class Font {
             existingPreview.remove();
         }
 
-        let fontImages = [];
-        let fontText;
-        let fontName;
-        fontFiles = event.target.files;
+        const scrollDiv = document.createElement('div');
+        scrollDiv.id = "imageWindow";
+        scrollDiv.style.cssText = `
+    height: 100px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    white-space: nowrap;
+    background-color: lightgrey;
+    border: 1px solid black;
+    padding: 10px 0;
+    display: inline-block;
+`;
 
-        for (let file of fontFiles) {
-            console.log(file.type);
-            if (file.type === "text/plain") {
-                fontName = file.name.replace(".txt", "");
-                fontText = file;
-            }
-            if (file.type === "image/png") {
-                fontImages.push(file);
-            }
-        }
+        // Create a container for overlapped images
+        const imageContainer = document.createElement('div');
+        imageContainer.style.cssText = `
+    position: relative;
+    height: 100%;
+    display: inline-block;
+`;
 
-        if (fontImages.length > 0 && fontText) {
-            for (let image of fontImages) {
-                if (!image.name.includes(fontName)) {
-                    FINEINPUTLABEL.innerHTML = "One or all of the image file names do not match the .txt file name <br>";
-                    FILEINPUT.value = null;
-                    return;
-                }
-            }
-
-            let txtName = document.createElement("li");
-            txtName.textContent = fontText.name;
-            FILESLIST.appendChild(txtName);
-
-            for (let image of fontImages) {
-                let imgName = document.createElement("li");
-                imgName.textContent = image.name;
-                FILESLIST.appendChild(imgName);
-            }
-
-            FINEINPUTLABEL.innerHTML = "Files Selected <br>";
-            fontInstance = new Font(fontText, fontImages);
-        } else {
-            FINEINPUTLABEL.innerHTML = "Please select a .txt file and png image files <br>";
-            FILEINPUT.value = null;
-        }
-    }
-
-drawTable() {
-    // Remove any existing tables
-    const existingTables = document.getElementById('fontDataTables');
-    if (existingTables) {
-        existingTables.remove();
-    }
-
-    // Create container for tables with flex layout
-    const tablesContainer = document.createElement('div');
-    tablesContainer.id = 'fontDataTables';
-    tablesContainer.style.cssText = `
-        margin-top: 20px;
-        font-family: Arial, sans-serif;
-        display: flex;
-        flex-wrap: wrap;
-        gap: 20px;
-        align-items: flex-start;
-    `;
-
-    // Create character table
-    const characterTableContainer = this.createCharactersTable();
-    characterTableContainer.style.flex = '0 1 auto';
-    tablesContainer.appendChild(characterTableContainer);
-
-    // Create kerning table if kerning data exists
-    if (this.fontData && this.fontData.kerning) {
-        const kerningTableContainer = this.createKerningTable();
-        kerningTableContainer.style.flex = '0 1 auto';
-        tablesContainer.appendChild(kerningTableContainer);
-    }
-
-    // Position the tables after the top row container
-    const topRow = document.getElementById('topRowContainer');
-    if (topRow) {
-        topRow.after(tablesContainer);
-    } else {
-        // Fallback: add after image window or upload element
-        const imageWindow = document.getElementById('imageWindow');
-        if (imageWindow) {
-            imageWindow.after(tablesContainer);
-        } else {
-            document.getElementById('uploadfiles').after(tablesContainer);
-        }
-    }
-}
-
-// Helper method to create a table container
-createTableContainer(title) {
-    const container = document.createElement('div');
-    container.className = 'table-container';
-    container.style.cssText = `
-        margin-bottom: 30px;
-        overflow-x: auto;
-        width: auto;
-    `;
-
-    const heading = document.createElement('h2');
-    heading.textContent = title;
-    heading.style.cssText = `
-        margin-bottom: 10px;
-        color: #333;
-    `;
-    container.appendChild(heading);
-
-    const table = document.createElement('table');
-    table.style.cssText = `
-        border-collapse: collapse;
-        border: 1px solid #ddd;
-        font-size: 14px;
-        width: auto;
-    `;
-    
-    container.appendChild(table);
-    return { container, table };
-}
-
-// Helper method to create a table header row
-createTableHeader(headers) {
-    const thead = document.createElement('thead');
-    thead.style.backgroundColor = '#f2f2f2';
-    
-    const headerRow = document.createElement('tr');
-    
-    headers.forEach(headerText => {
-        const th = document.createElement('th');
-        th.textContent = headerText;
-        th.style.cssText = `
-            padding: 10px;
-            border: 1px solid #ddd;
-            text-align: left;
-        `;
-        headerRow.appendChild(th);
-    });
-    
-    thead.appendChild(headerRow);
-    return thead;
-}
-
-createCharactersTable() {
-    const { container, table } = this.createTableContainer('Character Data');
-    
-    // Determine if any character has offset data
-    const hasOffset = this.fontData.characters.some(char => char.offset);
-    
-    // Create headers
-    const headers = ['Index', 'Character', 'Width', 'Rectangle (x, y, w, h)'];
-    if (hasOffset) {
-        headers.push('Offset (x, y)');
-    }
-    
-    table.appendChild(this.createTableHeader(headers));
-
-    // Create table body
-    const tbody = document.createElement('tbody');
-    
-    this.fontData.characters.forEach((char, index) => {
-        const row = document.createElement('tr');
-        row.style.cssText = index % 2 === 0 ? 'background-color: #f9f9f9;' : '';
+        // No need to wait for mergedFont - we know it's ready because 
+        // createFontPreview is only called after mergeFontImages resolves
         
-        // Index cell
-        const indexCell = document.createElement('td');
-        indexCell.textContent = index;
-        indexCell.style.cssText = 'padding: 8px; border: 1px solid #ddd;';
-        row.appendChild(indexCell);
-        
-        // Character cell
-        const charCell = document.createElement('td');
-        if (char.character === '') {
-            charCell.textContent = '(space)';
-            charCell.style.fontStyle = 'italic';
-        } else if (char.character === '\n') {
-            charCell.textContent = '(newline)';
-            charCell.style.fontStyle = 'italic';
-        } else {
-            charCell.textContent = char.character;
-            charCell.style.fontWeight = 'bold';
-        }
-        charCell.style.cssText += 'padding: 8px; border: 1px solid #ddd;';
-        row.appendChild(charCell);
-        
-        // Width cell
-        const widthCell = document.createElement('td');
-        widthCell.textContent = char.width;
-        widthCell.style.cssText = 'padding: 8px; border: 1px solid #ddd;';
-        row.appendChild(widthCell);
-        
-        // Rectangle cell
-        const rectCell = document.createElement('td');
-        rectCell.textContent = char.rect.join(', ');
-        rectCell.style.cssText = 'padding: 8px; border: 1px solid #ddd;';
-        row.appendChild(rectCell);
-        
-        // Offset cell (if needed)
-        if (hasOffset) {
-            const offsetCell = document.createElement('td');
-            if (char.offset) {
-                offsetCell.textContent = char.offset.join(', ');
-            } else {
-                offsetCell.textContent = '—';
-                offsetCell.style.textAlign = 'center';
-            }
-            offsetCell.style.cssText += 'padding: 8px; border: 1px solid #ddd;';
-            row.appendChild(offsetCell);
-        }
-        
-        tbody.appendChild(row);
-    });
-    
-    table.appendChild(tbody);
-    return container;
-}
-
-createKerningTable() {
-    const { container, table } = this.createTableContainer('Kerning Pairs');
-    
-    // Create headers
-    table.appendChild(this.createTableHeader(['Character Pair', 'Kerning Value']));
-
-    // Create table body
-    const tbody = document.createElement('tbody');
-    
-    // Get all kerning pairs and sort them alphabetically
-    const kerningPairs = Object.keys(this.fontData.kerning).sort();
-    
-    kerningPairs.forEach((pair, index) => {
-        const row = document.createElement('tr');
-        row.style.cssText = index % 2 === 0 ? 'background-color: #f9f9f9;' : '';
-        
-        // Pair cell
-        const pairCell = document.createElement('td');
-        pairCell.textContent = `"${pair}"`;
-        pairCell.style.cssText = 'padding: 8px; border: 1px solid #ddd; font-family: monospace;';
-        row.appendChild(pairCell);
-        
-        // Value cell
-        const valueCell = document.createElement('td');
-        valueCell.textContent = this.fontData.kerning[pair];
-        valueCell.style.cssText = 'padding: 8px; border: 1px solid #ddd;';
-        row.appendChild(valueCell);
-        
-        tbody.appendChild(row);
-    });
-    
-    table.appendChild(tbody);
-    return container;
-}
-
-async createFontPreview() {
-    // Remove previous image preview if it exists
-    const existingPreview = document.getElementById('imageWindow');
-    if (existingPreview) {
-        // Clean up any object URLs to prevent memory leaks
-        const images = existingPreview.querySelectorAll('img');
-        Array.from(images).forEach(img => {
-            URL.revokeObjectURL(img.src);
-        });
-        existingPreview.remove();
-    }
-
-    const scrollDiv = document.createElement('div');
-    scrollDiv.id = "imageWindow";
-    scrollDiv.style.cssText = `
-        width: 700px;
-        height: 200px;
-        overflow-x: scroll;
-        overflow-y: hidden;
-        white-space: nowrap;
-        background-color: lightgrey;
-        border: 1px solid black;
-        padding: 10px;
-        display: inline-block;
-    `;
-
-    // Create a container for overlapped images
-    const imageContainer = document.createElement('div');
-    imageContainer.style.cssText = `
-        position: relative;
-        height: 100%;
-        display: inline-block;
-    `;
-
-    // Sort images so that Outline images come first (will be rendered at the bottom)
-    const sortedImages = [...this.images].sort((a, b) => {
-        const aIsOutline = a.name.endsWith('Outline.png');
-        const bIsOutline = b.name.endsWith('Outline.png');
-        if (aIsOutline && !bIsOutline) return -1;
-        if (!aIsOutline && bIsOutline) return 1;
-        return 0;
-    });
-
-    // Process images and add them as overlapped layers
-    for (const image of sortedImages) {
         const img = document.createElement('img');
-        img.src = image.name.startsWith('_') 
-            ? await removeBlack(image) 
-            : URL.createObjectURL(image);
+        console.log(this.mergedFont);
 
-        img.style.cssText = `
-            position: absolute;
-            top: 0;
-            left: 0;
-            height: 100%;
-            width: auto;
-            z-index: ${image.name.endsWith('Outline.png') ? 1 : 2};
-        `;
+        if (this.mergedFont) {
+            img.style.height = '100%'; // Make image fill container height
+            img.src = URL.createObjectURL(this.mergedFont);
+            imageContainer.appendChild(img);
+            scrollDiv.appendChild(imageContainer);
 
-        imageContainer.appendChild(img);
-    }
+            // Set container width based on the natural aspect ratio of images
+            const firstImg = imageContainer.querySelector('img');
+            firstImg.onload = () => {
+                const aspectRatio = firstImg.naturalWidth / firstImg.naturalHeight;
+                const containerHeight = scrollDiv.clientHeight - 20; // subtract padding
+                const renderedWidth = containerHeight * aspectRatio;
+                imageContainer.style.width = `${renderedWidth}px`;
+                scrollDiv.style.width = `${Math.min(renderedWidth, 700)}px`;
+            };
 
-    scrollDiv.appendChild(imageContainer);
+            // Get the upload element
+            const uploadElement = document.getElementById('uploadfiles');
+            const parent = uploadElement.parentElement;
 
-    // Set container width based on the natural aspect ratio of images
-    const firstImg = imageContainer.querySelector('img');
-    firstImg.onload = () => {
-        const aspectRatio = firstImg.naturalWidth / firstImg.naturalHeight;
-        const containerHeight = scrollDiv.clientHeight - 20; // subtract padding
-        imageContainer.style.width = `${containerHeight * aspectRatio}px`;
-    };
+            // Set up or reuse the top row container
+            let topRow = document.getElementById('topRowContainer');
 
-    // Get the upload element
-    const uploadElement = document.getElementById('uploadfiles');
-    const parent = uploadElement.parentElement;
-    
-    // Set up or reuse the top row container
-    let topRow = document.getElementById('topRowContainer');
-    
-    if (!topRow) {
-        topRow = document.createElement('div');
-        topRow.id = 'topRowContainer';
-        topRow.style.cssText = `
+            if (!topRow) {
+                topRow = document.createElement('div');
+                topRow.id = 'topRowContainer';
+                topRow.style.cssText = `
             display: flex;
             gap: 10px;
             align-items: start;
             margin-bottom: 20px;
         `;
-        parent.insertBefore(topRow, parent.firstChild);
-        topRow.appendChild(uploadElement);
-    }
-    
-    // Add the image preview to the top row
-    topRow.appendChild(scrollDiv);
-    
-    // Make upload area match the height of the preview
-    uploadElement.style.height = scrollDiv.style.height;
+                parent.insertBefore(topRow, parent.firstChild);
+                topRow.appendChild(uploadElement);
+            }
 
-    // Cleanup object URLs on unload
-    window.addEventListener('unload', () => {
-        const images = imageContainer.getElementsByTagName('img');
-        Array.from(images).forEach(img => {
-            URL.revokeObjectURL(img.src);
-        });
-    });
-}
+            // Create a column for the previews to sit in
+            let previewColumn = document.getElementById('previewColumn');
+            if (!previewColumn) {
+                previewColumn = document.createElement('div');
+                previewColumn.id = 'previewColumn';
+                previewColumn.style.cssText = `
+                    display: flex;
+                    flex-direction: column;
+                    gap: 10px;
+                `;
+                topRow.appendChild(previewColumn);
+            }
+
+            // Add the image preview to the column
+            previewColumn.appendChild(scrollDiv);
+
+            // Make upload area twice the height of the preview
+            uploadElement.style.height = `${scrollDiv.getBoundingClientRect().height * 2}px`;
+
+            this.createLivePreviewElement();
+
+            // Cleanup object URLs on unload
+            window.addEventListener('unload', () => {
+                const images = imageContainer.getElementsByTagName('img');
+                Array.from(images).forEach(img => {
+                    URL.revokeObjectURL(img.src);
+                });
+            });
+        }
+    }
+
+    createLivePreviewElement() {
+        const LIVE_PREVIEW_WRAPPER_ID = 'livePreviewWrapper';
+        // Remove previous live preview element if it exists
+        const existingPreview = document.getElementById(LIVE_PREVIEW_WRAPPER_ID);
+        if (existingPreview) {
+            existingPreview.remove();
+        }
+
+        // Create the main wrapper div
+        const livePreviewWrapper = document.createElement('div');
+        livePreviewWrapper.id = LIVE_PREVIEW_WRAPPER_ID;
+
+        // Try to match the width of the image preview
+        const imagePreview = document.getElementById('imageWindow');
+        const wrapperWidth = imagePreview ? imagePreview.style.width : 'auto';
+
+        livePreviewWrapper.style.cssText = `
+        display: flex;
+        flex-direction: column;
+        width: ${wrapperWidth};
+        max-width: 700px;
+    `;
+
+        // Create the div that will show the rendered text (similar to scrollDiv)
+        const livePreviewArea = document.createElement('div');
+        livePreviewArea.id = 'livePreviewArea';
+        livePreviewArea.style.cssText = `
+        height: 100px;
+        overflow-x: auto;
+        overflow-y: hidden;
+        white-space: nowrap;
+        background-color: lightgrey;
+        border: 1px solid black;
+        padding: 10px 0;
+        box-sizing: border-box;
+    `;
+
+        // Create the input field
+        const inputField = document.createElement('input');
+        inputField.type = 'text';
+        inputField.id = 'livePreviewInput';
+        inputField.placeholder = 'Type here for live preview...';
+        inputField.style.cssText = `
+        margin-top: 5px;
+        width: 100%;
+        padding: 5px;
+        box-sizing: border-box;
+    `;
+
+        // Assemble the element
+        livePreviewWrapper.appendChild(livePreviewArea);
+        livePreviewWrapper.appendChild(inputField);
+
+        // Add it to the preview column created in createFontPreview
+        const previewColumn = document.getElementById('previewColumn');
+        if (previewColumn) {
+            previewColumn.appendChild(livePreviewWrapper);
+        }
+    }
 
     async parseFontTxt(txt) {
         // Read the file content with Windows-1251 encoding
@@ -413,16 +232,37 @@ async createFontPreview() {
             characters: []
         };
 
+        // --- New: Track matched segments for appendix ---
+        const matchedSegments = []; // Stores objects like { start: index, end: index }
+
+        // Helper to add a segment if a match is found
+        const addMatchedSegment = (match) => {
+            if (match && match.index !== undefined) {
+                matchedSegments.push({
+                    start: match.index,
+                    end: match.index + match[0].length
+                });
+            }
+        };
+        // --- End New ---
+
         try {
-            // Extract all sections using more flexible regex patterns
-            const sections = {
-                charList: fileContent.match(/Define\s+CharList\s*\n\s*\(([\s\S]*?)\);/),
-                widthList: fileContent.match(/Define\s+WidthList\s*\n\s*\(([\s\S]*?)\);/),
-                rectList: fileContent.match(/Define\s+RectList\s*\n\s*\(([\s\S]*?)\);/),
-                offsetList: fileContent.match(/Define\s+OffsetList\s*\n\s*\(([\s\S]*?)\);/),
-                kerningPairs: fileContent.match(/Define\s+KerningPairs\s*\n\s*\(([\s\S]*?)\);/),
-                kerningValues: fileContent.match(/Define\s+KerningValues\s*\(([\s\S]*?)\);/)
+            // Define regex patterns and store matches
+            const sectionRegexes = {
+                charList: /Define\s+CharList\s*\n\s*\(([\s\S]*?)\);/m,
+                widthList: /Define\s+WidthList\s*\n\s*\(([\s\S]*?)\);/m,
+                rectList: /Define\s+RectList\s*\n\s*\(([\s\S]*?)\);/m,
+                offsetList: /Define\s+OffsetList\s*\n\s*\(([\s\S]*?)\);/m,
+                kerningPairs: /Define\s+KerningPairs\s*\n\s*\(([\s\S]*?)\);/m,
+                kerningValues: /Define\s+KerningValues\s*\(([\s\S]*?)\);/m // Note: This one might not have the newline after "Define...;"
             };
+
+            const sections = {};
+            for (const key in sectionRegexes) {
+                const match = fileContent.match(sectionRegexes[key]);
+                sections[key] = match;
+                addMatchedSegment(match); // Record the matched segment
+            }
 
             // Check if all required sections were found
             const requiredSections = ['charList', 'widthList', 'rectList'];
@@ -434,11 +274,15 @@ async createFontPreview() {
 
             // Parse character list
             const charList = [];
-            if (sections.charList) {
-                const charRegex = /'(.?)'/g;
+            if (sections.charList && typeof sections.charList[1] === 'string') {
+                const charRegex = /'(.?)'|"'"/g;
                 let charMatch;
                 while ((charMatch = charRegex.exec(sections.charList[1])) !== null) {
-                    charList.push(charMatch[1]);
+                    if (charMatch[0] === "\"'\"") {
+                        charList.push("'");
+                    } else {
+                        charList.push(charMatch[1]);
+                    }
                 }
             }
 
@@ -530,12 +374,296 @@ async createFontPreview() {
                 }
             }
 
+            // --- New: Determine the appendix ---
+
+            // 1. Sort the segments by their start index
+            matchedSegments.sort((a, b) => a.start - b.start);
+
+            // 2. Merge overlapping or adjacent segments
+            const mergedSegments = [];
+            if (matchedSegments.length > 0) {
+                let current = { ...matchedSegments[0] }; // Start with the first segment
+
+                for (let i = 1; i < matchedSegments.length; i++) {
+                    const next = matchedSegments[i];
+                    // If the next segment overlaps or is adjacent to the current one
+                    if (next.start <= current.end + 1) { // +1 to account for potential single space/newline separation
+                        current.end = Math.max(current.end, next.end); // Extend the current segment
+                    } else {
+                        mergedSegments.push(current); // Current segment is complete, add it
+                        current = { ...next }; // Start a new current segment
+                    }
+                }
+                mergedSegments.push(current); // Add the last current segment
+            }
+
+            // 3. Extract unparsed parts (appendix)
+            let appendixParts = [];
+            let lastEnd = 0; // Tracks the end of the last parsed segment
+
+            for (const segment of mergedSegments) {
+                if (segment.start > lastEnd) {
+                    // There's a gap between the last parsed segment and the current one
+                    appendixParts.push(fileContent.substring(lastEnd, segment.start));
+                }
+                lastEnd = Math.max(lastEnd, segment.end); // Update lastEnd to the end of the current segment
+            }
+
+            // If there's content after the last parsed segment
+            if (lastEnd < fileContent.length) {
+                appendixParts.push(fileContent.substring(lastEnd));
+            }
+
+            // Join all unparsed parts and assign to this.appendix
+            this.appendix = appendixParts.join('').trim();
+            // --- End New ---
+
             console.log("Font parsed successfully:", result);
+            console.log("Appendix:", this.appendix); // Log the appendix
             return result;
         } catch (error) {
             console.error("Error parsing font file:", error);
             throw new Error(`Failed to parse font file: ${error.message}`);
         }
     }
+
+     serializeFontData(data = this.fontData, appendix = this.appendix) {
+        let serializedString = "";
+        const INDENT = "  "; // Two spaces for indentation
+
+        // Helper to format lists with wrapping, including internal commas and newlines
+        const formatList = (items, itemFormatter, itemsPerLine, indentLevel = 1, key = null) => {
+            let contentLines = [];
+            let currentLineItems = [];
+            let currentLineLength = 0;
+
+            // Adjust base and subsequent indentation based on key
+            // The example output for WidthList has a base indent of 2 spaces, and subsequent lines 4 spaces.
+            // For others, it's 2 spaces for base, and 4 spaces for subsequent.
+            const baseIndent = key === "width" ? INDENT.repeat(2) : INDENT.repeat(indentLevel);
+            const subsequentIndent = key === "width" ? INDENT.repeat(4) : INDENT.repeat(indentLevel + 2);
+
+            for (let i = 0; i < items.length; i++) {
+                const itemStr = itemFormatter(items[i]);
+                // Estimate length including comma and space for items within a line
+                const estimatedItemLength = itemStr.length + (i < items.length - 1 ? 2 : 0); // +2 for ", "
+
+                // Check if adding this item exceeds line length or items per line, and if it's not the very first item on a line
+                if ((currentLineLength + estimatedItemLength > 78 && currentLineItems.length > 0) || currentLineItems.length >= itemsPerLine) {
+                    contentLines.push(currentLineItems.join(', '));
+                    currentLineItems = [];
+                    currentLineLength = 0;
+                }
+
+                currentLineItems.push(itemStr);
+                currentLineLength += estimatedItemLength;
+            }
+            if (currentLineItems.length > 0) {
+                contentLines.push(currentLineItems.join(', '));
+            }
+
+            // Now, join the content lines with proper indentation and commas
+            // The last line will not have a trailing comma, which is handled by the overall structure
+            return contentLines.map((line, index) => {
+                const linePrefix = index === 0 ? baseIndent : subsequentIndent;
+                return linePrefix + line;
+            }).join(',\n'); // Join lines with comma and newline
+        };
+
+        // --- Define CharList ---
+        if (data.characters && data.characters.length > 0) {
+            const charItems = data.characters.map(charObj => {
+                // Handle the special case for single quote character
+                if (charObj.character === "'") {
+                    return `\"'\"`; // Represent as "'"
+                }
+                return `'${charObj.character}'`;
+            });
+
+            let formattedChars = formatList(charItems, item => item, 17, 1); // Indent level 1
+            // Remove the trailing comma from the last line if it exists
+            if (formattedChars.endsWith(',')) {
+                formattedChars = formattedChars.slice(0, -1);
+            }
+            serializedString += `Define CharList\n  (\n${formattedChars}\n  );\n\n`;
+        }
+
+        // --- Define WidthList ---
+        if (data.characters && data.characters.length > 0) {
+            const widthItems = data.characters.map(charObj => charObj.width);
+            const paddedWidths = widthItems.map(w => String(w).padStart(3, ' ')); // Pad to 3 characters
+
+            let formattedWidths = formatList(paddedWidths, item => item, 16, 1, "width"); // Indent level 1, key "width"
+            // Remove the trailing comma from the last line if it exists
+            if (formattedWidths.endsWith(',')) {
+                formattedWidths = formattedWidths.slice(0, -1);
+            }
+            serializedString += `Define WidthList\n  (\n${formattedWidths}\n  );\n\n`;
+        }
+
+        // --- Define RectList ---
+        if (data.characters && data.characters.length > 0) {
+            const rectItems = data.characters.map(charObj => charObj.rect);
+            const formattedRects = rectItems.map(rect => {
+                // Pad each number in the rect to ensure consistent spacing
+                const [x, y, w, h] = rect;
+                return `(${String(x).padStart(4, ' ')}, ${String(y).padStart(2, ' ')}, ${String(w).padStart(2, ' ')}, ${String(h).padStart(2, ' ')})`;
+            });
+
+            let formattedRectList = formatList(formattedRects, item => item, 4, 1); // Indent level 1
+            // Remove the trailing comma from the last line if it exists
+            if (formattedRectList.endsWith(',')) {
+                formattedRectList = formattedRectList.slice(0, -1);
+            }
+            serializedString += `Define RectList\n  (\n${formattedRectList}\n  );\n\n`;
+        }
+
+        // --- Define OffsetList (Optional) ---
+        // Check if any character has an offset defined
+        const hasOffsets = data.characters.some(charObj => charObj.offset !== undefined);
+        if (hasOffsets) {
+            const offsetItems = data.characters.map(charObj => charObj.offset || [0, 0]); // Default to [0,0] if missing
+            const formattedOffsets = offsetItems.map(offset => {
+                const [dx, dy] = offset;
+                // Pad numbers to ensure consistent spacing for offsets
+                return `(${String(dx).padStart(3, ' ')}, ${String(dy).padStart(2, ' ')})`;
+            });
+
+            let formattedOffsetList = formatList(formattedOffsets, item => item, 8, 1); // Indent level 1
+            // Remove the trailing comma from the last line if it exists
+            if (formattedOffsetList.endsWith(',')) {
+                formattedOffsetList = formattedOffsetList.slice(0, -1);
+            }
+            serializedString += `Define OffsetList\n  (\n${formattedOffsetList}\n  );\n\n`;
+        }
+
+        // --- Define KerningPairs and KerningValues (Optional) ---
+        if (data.kerning && Object.keys(data.kerning).length > 0) {
+            const kerningPairs = Object.keys(data.kerning);
+            const kerningValues = Object.values(data.kerning);
+
+            // Kerning Pairs
+            const formattedKerningPairs = kerningPairs.map(pair => `"${pair}"`);
+            let serializedKerningPairs = formatList(formattedKerningPairs, item => item, 8, 1); // Indent level 1
+            // Remove the trailing comma from the last line if it exists
+            if (serializedKerningPairs.endsWith(',')) {
+                serializedKerningPairs = serializedKerningPairs.slice(0, -1);
+            }
+            serializedString += `Define KerningPairs\n  (\n${serializedKerningPairs}\n  );\n\n`;
+
+            // Kerning Values
+            const paddedKerningValues = kerningValues.map(val => String(val).padStart(3, ' ')); // Pad to 3 characters
+            let serializedKerningValues = formatList(paddedKerningValues, item => item, 16, 1); // Indent level 1
+            // Remove the trailing comma from the last line if it exists
+            if (serializedKerningValues.endsWith(',')) {
+                serializedKerningValues = serializedKerningValues.slice(0, -1);
+            }
+            serializedString += `Define KerningValues\n  (\n${serializedKerningValues}\n  );\n\n`;
+        }
+
+        // --- Append the appendix ---
+        if (appendix && appendix.length > 0) {
+            serializedString += appendix + "\n"; // Add appendix, followed by a newline
+        }
+
+        // ** NEW: Encode the serialized string to Windows-1251 **
+         // This returns a Uint8Array
+        // To turn it into a Blob, you'll typically use:
+        // const blob = new Blob([encodedData], { type: 'application/octet-stream' });
+        // or if it's meant to be a text file with windows-1251 encoding:
+        // const blob = new Blob([encodedData], { type: 'text/plain; charset=windows-1251' });
+
+        // The function is currently returning a string. If you need to return the encoded Uint8Array
+        // or a Blob directly, you would modify the return statement.
+        // For now, I'll return the encoded Uint8Array as it's the direct result of the encoding step.
+        return windows1251.encode(serializedString); // Return the Uint8Array of windows-1251 encoded bytes
+    }
+
+    downloadSerializedFontFile(filename) {
+        let content = this.serializeFontData();
+        console.log(content);
+        const blob = new Blob([content], { type: 'text/plain;charset=windows-1251' }); // Specify Windows-1251 encoding
+        const url = URL.createObjectURL(blob);
+
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a); // Append to body is necessary for Firefox
+        a.click();
+
+        // Clean up: remove the element and revoke the URL
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    }
 }
-FILEINPUT.onchange = Font.prototype.getFilesEvent;
+
+// Fix the file input event handler to properly handle files
+FILEINPUT.onchange = (event) => {
+    handleFileSelection(event);
+};
+
+// Add this function to handle file selection
+function handleFileSelection(event) {
+    let downloadButton = document.getElementById('downloadButton');
+    if (downloadButton) {
+        downloadButton.remove()
+    }
+    // Clear the previous file list
+    FILESLIST.innerHTML = '';
+
+    // Remove the previous image preview if it exists
+    const existingPreview = document.getElementById('imageWindow');
+    if (existingPreview) {
+        // Clean up any object URLs to prevent memory leaks
+        const images = existingPreview.querySelectorAll('img');
+        Array.from(images).forEach(img => {
+            URL.revokeObjectURL(img.src);
+        });
+        existingPreview.remove();
+    }
+
+    let fontImages = [];
+    let fontText;
+    let fontName;
+    fontFiles = event.target.files;
+
+    for (let file of fontFiles) {
+        console.log(file.type);
+        if (file.type === "text/plain") {
+            fontName = file.name.replace(".txt", "");
+            fontText = file;
+        }
+        if (file.type === "image/png") {
+            fontImages.push(file);
+        }
+    }
+
+    /*if (fontImages.length > 0 && fontText) {
+        for (let image of fontImages) {
+            if (!image.name.includes(fontName)) {
+                FINEINPUTLABEL.innerHTML = "One or all of the image file names do not match the .txt file name <br>";
+                FILEINPUT.value = null;
+                return;
+            }
+        } */
+    if(fontText){
+
+        let txtName = document.createElement("li");
+        txtName.textContent = fontText.name;
+        FILESLIST.appendChild(txtName);
+
+        /*for (let image of fontImages) {
+            let imgName = document.createElement("li");
+            imgName.textContent = image.name;
+            FILESLIST.appendChild(imgName);
+        }*/
+
+        FINEINPUTLABEL.innerHTML = "Files Selected <br>";
+        fontInstance = new Font(fontText/*, fontImages*/);
+        window.fontInstance = fontInstance;
+        console.dir(fontInstance);
+    } else {
+        FINEINPUTLABEL.innerHTML = "Please select a .txt file <br>";
+        FILEINPUT.value = null;
+    }
+}
