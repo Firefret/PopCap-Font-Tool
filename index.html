@@ -5,13 +5,15 @@
     <title>PvZ Font Tool</title>
 </head>
 <body>
-    <div id="uploadfiles" style="background-color: lightgray; border: 1px solid black; padding: 10px; display: inline-block;">
-        <span id="fontdatalabel">Select font's .txt and associated images <br></span>
-        <input type="file" id="fontdata" accept="text/plain, image/png, image/jpeg" data-text="Choose .txt and associated images" multiple>
-        <ul id="fileslist">
+<div id="uploadfiles" style="background-color: lightgray; border: 1px solid black; padding: 10px; display: inline-block; position: relative;">
+    <span id="fontdatalabel">Select font's .txt and associated images <br></span>
+    <input type="file" id="fontdata" accept="text/plain, image/png, image/jpeg" data-text="Choose .txt and associated images" multiple>
+    <ul id="fileslist">
 
-        </ul>
-    </div>
+    </ul>
+    <span id="signature" style="position: absolute; bottom: 10px; right: 10px; color: grey; font-family: Arial,serif; font-size: 10px ">PopCap Font Tool by Firefret</span>
+</div>
+
   <script src="fontTool.js" type="module"></script>
 </body>
 </html>

@@ -69,6 +69,7 @@ function drawTable(fontData) {
         th.style.cssText = `
             padding: 12px 15px;
         `;
+        th.style.width = "fit-content";
         headerRow.appendChild(th);
     });
     
@@ -96,12 +97,14 @@ function drawTable(fontData) {
         } else {
             charCell.textContent = char.character;
         }
+        charCell.style.width = "fit-content";
         row.appendChild(charCell);
 
         
         // Width cell
         const widthCell = document.createElement('td');
         widthCell.style.padding = '12px 15px';
+        widthCell.style.width = "fit-content";
         //widthCell.textContent = char.width;
         row.appendChild(widthCell);
         const widthValue = document.createElement("input");
@@ -119,6 +122,7 @@ function drawTable(fontData) {
         // Rectangle cell
         const rectCell = document.createElement('td');
         rectCell.style.padding = '12px 15px';
+        rectCell.style.width = "fit-content";
         row.appendChild(rectCell);
         const rectValue = document.createElement("input");
         rectValue.type = "text";
