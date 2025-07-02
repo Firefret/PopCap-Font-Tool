@@ -41,6 +41,7 @@ class Font {
         signatureElement.style.bottom = "10px";
         signatureElement.style.right = "10px";
         signatureElement.style.color = "grey";
+        signatureElement.style.fontFamily = "Arial";
         UPLOADFILES.appendChild(signatureElement);
     }
 
