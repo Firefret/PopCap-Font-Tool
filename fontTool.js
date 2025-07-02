@@ -42,6 +42,7 @@ class Font {
         signatureElement.style.right = "10px";
         signatureElement.style.color = "grey";
         signatureElement.style.fontFamily = "Arial";
+        signatureElement.style.fontSize = "8px";
         UPLOADFILES.appendChild(signatureElement);
     }
 
@@ -90,8 +91,13 @@ class Font {
                 spaceDiv.style.display = 'inline-block';
                 spaceDiv.style.position = 'relative';
                 previewArea.appendChild(spaceDiv);
-                spaceDiv.style.left = `-${widthAccumulator}px`;
-                widthAccumulator += fontInstance.spaceValue;
+                let previousChar = spaceDiv.previousElementSibling;
+                if(previousChar instanceof HTMLDivElement){
+                    spaceDiv.style.left = previousChar.style.left;
+                } else {
+                    spaceDiv.style.left = `-${widthAccumulator}px`;
+                    widthAccumulator += fontInstance.spaceValue;
+                }
             }
             else{
                 let url = URL.createObjectURL(charInstance.charImage);
