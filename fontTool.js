@@ -35,6 +35,13 @@ class Font {
         UPLOADFILES.style.position = "sticky";
         UPLOADFILES.style.top = "5px";
         UPLOADFILES.style.overflow = "auto";
+        let signatureElement = document.createElement('span');
+        signatureElement.textContent = "PopCap Font Tool by Firefret"
+        signatureElement.style.position = "absolute";
+        signatureElement.style.bottom = "10px";
+        signatureElement.style.right = "10px";
+        signatureElement.style.color = "grey";
+        UPLOADFILES.appendChild(signatureElement);
     }
 
     async initializeFont() {
