@@ -14,12 +14,13 @@ let fontFiles = [];
 
 class Font {
     constructor(text, images) {
+        window.fontInstance = this;
         this.appendix = "";
         this.text = text;
         this.images = images;
         this.mergedFont = null; // Will be set after merging
         this.fontData = null;   // Will be set after parsing
-
+        this.charURLs = [];
         // Main asynchronous initialization sequence
         this.initializeFont();
 
@@ -37,12 +38,10 @@ class Font {
     }
 
     async initializeFont() {
-        try {
             // 1. Merge images (async)
             this.mergedFont = await imageUtil.mergeFontImages(this.images);
             console.log("Merged font image available.");
-            this.createFontPreview(); // Now this will have mergedFont available
-
+            this.fontPreviewArea = this.createFontPreview(); // Now this will have mergedFont available
             // 2. Parse font data (async)
             this.fontData = await this.parseFontTxt(this.text);
             console.dir(this.fontData);
@@ -57,14 +56,61 @@ class Font {
                 console.warn("Font data or characters array not found, skipping character cutting.");
             }
 
-        } catch (error) {
-            console.error("Error during Font initialization:", error);
-            // Optionally, disable functionality if initialization fails
-            this.downloadButton.disabled = true;
-        }
     }
+    async fontRenderer(previewArea){
+        if(fontInstance.charURLs.length > 0){
+            while(fontInstance.charURLs[0]){
+                URL.revokeObjectURL(fontInstance.charURLs[0]);
+                fontInstance.charURLs.shift();
 
+            }
+        }
+        await imageUtil.cutImageBlobToPieces(this.mergedFont, this.fontData.characters)
+        previewArea.innerHTML = '';
+        let inputField = document.getElementById('livePreviewInput');
+        let inputArray = inputField.value.split('');
+        let zValue = 0;
+        let widthAccumulator = 0
+        inputArray.forEach(char => {
+            let img = document.createElement('img');
+            let charInstance = fontInstance.fontData.characters.find(charObj => charObj.character === char);
+
+            if(char === " "){
+                let spaceDiv = document.createElement('div');
+                spaceDiv.style.width = `${fontInstance.spaceValue}px`;
+                spaceDiv.style.height = `${fontInstance.fontData.characters[0].rect[3]}px`;
+                spaceDiv.style.display = 'inline-block';
+                spaceDiv.style.position = 'relative';
+                previewArea.appendChild(spaceDiv);
+                spaceDiv.style.left = `-${widthAccumulator}px`;
+                widthAccumulator += fontInstance.spaceValue;
+            }
+            else{
+                let url = URL.createObjectURL(charInstance.charImage);
+                img.src = url;
+                fontInstance.charURLs.push(url)
+                img.style.position = 'relative';
+                img.dataset.nextcharmoveleft = charInstance.rect[2] - charInstance.width;
+                img.style.zIndex = zValue++;
+
+                previewArea.appendChild(img);
+                let previousChar = img.previousElementSibling;
+                if(!previousChar){
+                    img.style.left = `${charInstance.offset[0]+(charInstance.rect[2] - charInstance.width)}px`;
+                }
+                if(previousChar instanceof HTMLImageElement){
+                    img.style.left = `-${widthAccumulator - charInstance.offset[0]}px`;
+                    widthAccumulator += ((charInstance.rect[2]  - charInstance.width));
+                }
+                else if(previousChar instanceof HTMLDivElement){
+                    img.style.left = `-${widthAccumulator - charInstance.offset[0]-fontInstance.spaceValue}px`;
+                    widthAccumulator += ((charInstance.rect[2]  - charInstance.width)-fontInstance.spaceValue);
+                }
+            }
+        })
+    }
     createFontPreview() {
+        let fontPreviewArea;
         // Remove previous image preview if it exists
         const existingPreview = document.getElementById('imageWindow');
         if (existingPreview) {
@@ -162,7 +208,7 @@ class Font {
             // Make upload area twice the height of the preview
             uploadElement.style.height = `${scrollDiv.getBoundingClientRect().height * 2}px`;
 
-            this.createLivePreviewElement();
+             fontPreviewArea = this.createLivePreviewElement();
 
             // Cleanup object URLs on unload
             window.addEventListener('unload', () => {
@@ -172,6 +218,7 @@ class Font {
                 });
             });
         }
+        return fontPreviewArea;
     }
 
     createLivePreviewElement() {
@@ -223,25 +270,7 @@ class Font {
         box-sizing: border-box;
     `;
     inputField.addEventListener('input', () => {
-        livePreviewArea.innerHTML = '';
-        let inputArray = inputField.value.split('');
-        inputArray.forEach(char => {
-           let img = document.createElement('img');
-           let charInstance = fontInstance.fontData.characters.find(charObj => charObj.character === char);
-
-           if(char === " "){
-               let spaceDiv = document.createElement('div');
-               spaceDiv.style.width = `${fontInstance.spaceValue}px`;
-               spaceDiv.style.height = `${fontInstance.fontData.characters[0].rect[3]}px`;
-               spaceDiv.style.display = 'inline-block';
-               livePreviewArea.appendChild(spaceDiv);
-           }
-           else{
-               img.src = URL.createObjectURL(charInstance.charImage);
-               livePreviewArea.appendChild(img);
-           }
-        })
-
+       fontInstance.fontRenderer(fontInstance.fontPreviewArea);
     })
         // Assemble the element
         livePreviewWrapper.appendChild(livePreviewArea);
@@ -252,6 +281,7 @@ class Font {
         if (previewColumn) {
             previewColumn.appendChild(livePreviewWrapper);
         }
+        return livePreviewArea;
     }
 
     async parseFontTxt(txt) {
@@ -695,8 +725,7 @@ function handleFileSelection(event) {
 
             FINEINPUTLABEL.innerHTML = "Files Selected <br>";
             fontInstance = new Font(fontText, fontImages);
-            window.fontInstance = fontInstance;
-            console.dir(fontInstance);
+            //window.fontInstance = fontInstance;
         } else {
             FINEINPUTLABEL.innerHTML = "Please select a .txt file <br>";
             FILEINPUT.value = null;

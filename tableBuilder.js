@@ -111,7 +111,7 @@ function drawTable(fontData) {
             setTimeout(()=>null, 0)
             fontData.characters[index].width = parseInt(event.target.value);
             console.log(fontData)
-            fontInstance.serializeFontData()
+            fontInstance.fontRenderer(fontInstance.fontPreviewArea);
         })
         widthCell.appendChild(widthValue);
 
@@ -126,7 +126,8 @@ function drawTable(fontData) {
         rectValue.addEventListener("keyup", function(event) {
             fontData.characters[index].rect = event.target.value.split(",");
             console.log(fontData)
-            fontInstance.serializeFontData()
+                fontInstance.fontRenderer(fontInstance.fontPreviewArea);
+
         })
         rectCell.appendChild(rectValue);
         
@@ -145,7 +146,8 @@ function drawTable(fontData) {
                     fontData.characters[index].offset[ind] = parseInt(val);
                 })
                 console.dir(fontData);
-                fontInstance.serializeFontData()
+
+                fontInstance.fontRenderer(fontInstance.fontPreviewArea);
             })
             offsetCell.appendChild(offsetValue)
 
