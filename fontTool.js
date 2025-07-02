@@ -2,6 +2,7 @@ import drawTable from './tableBuilder.js';
 import * as windows1251 from './windows-1251.js';
 import * as imageUtil from './imageUtil.js';
 
+
 const FILEINPUT = document.getElementById("fontdata");
 const FINEINPUTLABEL = document.getElementById("fontdatalabel");
 const FILESLIST = document.getElementById("fileslist");
@@ -14,47 +15,56 @@ let fontFiles = [];
 class Font {
     constructor(text, images) {
         this.appendix = "";
-        //this.serialized = "";
         this.text = text;
         this.images = images;
+        this.mergedFont = null; // Will be set after merging
+        this.fontData = null;   // Will be set after parsing
 
-        // Initialize the mergedFont property
-        this.mergedFont = null;
+        // Main asynchronous initialization sequence
+        this.initializeFont();
 
-        // Use an async IIFE to handle the async font parsing
-        (async () => {
-            try {
-                this.fontData = await this.parseFontTxt(text);
-                console.dir(this.fontData);
-
-                // Draw tables after font data is available
-                drawTable(this.fontData);
-            } catch (error) {
-                console.error("Error initializing font:", error);
-            }
-        })();
-        
-        // Call mergeFontImages and then createFontPreview when it's done
-        imageUtil.mergeFontImages(this.images).then(mergedFont => {
-            this.mergedFont = mergedFont;
-            this.createFontPreview();
-        }).catch(error => {
-            console.error("Error in font merging or preview creation:", error);
-        });
         this.downloadButton = document.createElement('button');
-        this.downloadButton.textContent="Save file";
+        this.downloadButton.textContent = "Save file";
         this.downloadButton.id = "downloadButton";
 
         this.downloadButton.onclick = () => {
-            this.downloadSerializedFontFile(this.text.name)
-        }
+            this.downloadSerializedFontFile(this.text.name);
+        };
         UPLOADFILES.appendChild(this.downloadButton);
         UPLOADFILES.style.position = "sticky";
-        UPLOADFILES.style.top = "5px"
-        UPLOADFILES.style.overflow = "auto"
+        UPLOADFILES.style.top = "5px";
+        UPLOADFILES.style.overflow = "auto";
     }
 
-    async createFontPreview() {
+    async initializeFont() {
+        try {
+            // 1. Merge images (async)
+            this.mergedFont = await imageUtil.mergeFontImages(this.images);
+            console.log("Merged font image available.");
+            this.createFontPreview(); // Now this will have mergedFont available
+
+            // 2. Parse font data (async)
+            this.fontData = await this.parseFontTxt(this.text);
+            console.dir(this.fontData);
+            drawTable(this.fontData); // Draw tables after font data is available
+
+            // 3. Cut font to chars using the MERGED font (async)
+            // Ensure fontData is passed correctly (it should be an array of characters with rects)
+            if (this.fontData && this.fontData.characters) {
+                await imageUtil.cutImageBlobToPieces(this.mergedFont, this.fontData.characters);
+                console.log("Characters cut into individual blobs.");
+            } else {
+                console.warn("Font data or characters array not found, skipping character cutting.");
+            }
+
+        } catch (error) {
+            console.error("Error during Font initialization:", error);
+            // Optionally, disable functionality if initialization fails
+            this.downloadButton.disabled = true;
+        }
+    }
+
+    createFontPreview() {
         // Remove previous image preview if it exists
         const existingPreview = document.getElementById('imageWindow');
         if (existingPreview) {
@@ -119,12 +129,16 @@ class Font {
             if (!topRow) {
                 topRow = document.createElement('div');
                 topRow.id = 'topRowContainer';
+
                 topRow.style.cssText = `
             display: flex;
             gap: 10px;
             align-items: start;
             margin-bottom: 20px;
         `;
+                topRow.style.position = 'sticky';
+                topRow.style.top = '10px';
+                topRow.style.zIndex = '1000';
                 parent.insertBefore(topRow, parent.firstChild);
                 topRow.appendChild(uploadElement);
             }
@@ -208,7 +222,27 @@ class Font {
         padding: 5px;
         box-sizing: border-box;
     `;
+    inputField.addEventListener('input', () => {
+        livePreviewArea.innerHTML = '';
+        let inputArray = inputField.value.split('');
+        inputArray.forEach(char => {
+           let img = document.createElement('img');
+           let charInstance = fontInstance.fontData.characters.find(charObj => charObj.character === char);
 
+           if(char === " "){
+               let spaceDiv = document.createElement('div');
+               spaceDiv.style.width = `${fontInstance.spaceValue}px`;
+               spaceDiv.style.height = `${fontInstance.fontData.characters[0].rect[3]}px`;
+               spaceDiv.style.display = 'inline-block';
+               livePreviewArea.appendChild(spaceDiv);
+           }
+           else{
+               img.src = URL.createObjectURL(charInstance.charImage);
+               livePreviewArea.appendChild(img);
+           }
+        })
+
+    })
         // Assemble the element
         livePreviewWrapper.appendChild(livePreviewArea);
         livePreviewWrapper.appendChild(inputField);
@@ -227,7 +261,7 @@ class Font {
             reader.onload = (e) => resolve(e.target.result);
             reader.readAsText(txt, 'windows-1251');
         });
-
+        this.spaceValue = parseInt(fileContent.match(/LayerSetCharWidths\s+Main\s+\('\s+'\)\s+\((\d+)\);/)[1]);
         // Create the result object with characters array
         const result = {
             characters: []

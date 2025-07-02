@@ -128,3 +128,64 @@ export async function mergeFontImages(images) {
         throw error;
     }
 }
+
+export async function cutImageBlobToPieces(originalImageBlob, cutRects) {
+    if (!(originalImageBlob instanceof Blob)) {
+        throw new TypeError("The 'originalImageBlob' argument must be a Blob.");
+    }
+    if (!Array.isArray(cutRects)) {
+        throw new TypeError("The 'cutRects' argument must be an array.");
+    }
+
+    return new Promise((resolve, reject) => {
+        const img = new Image(); // Create a new Image element
+
+        // 1. Handle successful image loading
+        img.onload = async () => {
+            const promises = cutRects.map(charObject => {
+                // Ensure charObject has a rect property and it's an array of 4 numbers
+                if (!charObject.rect || !Array.isArray(charObject.rect) || charObject.rect.length !== 4) {
+                    console.warn("Skipping charObject due to invalid 'rect' property:", charObject);
+                    return Promise.resolve(charObject); // Resolve with original object if rect is invalid
+                }
+
+                const [x, y, width, height] = charObject.rect;
+
+                // Create a temporary canvas for cutting each piece
+                const canvas = document.createElement('canvas');
+                canvas.width = width;
+                canvas.height = height;
+                const ctx = canvas.getContext('2d');
+
+                // Draw the specific section of the loaded image onto the temporary canvas
+                ctx.drawImage(img, x, y, width, height, 0, 0, width, height);
+
+                // Convert the canvas content to a new Blob
+                return new Promise(blobResolve => {
+                    canvas.toBlob(blob => {
+                        charObject.charImage = blob; // Assign the new Blob to charImage
+                        blobResolve(charObject); // Resolve this individual promise with the updated object
+                    }, 'image/png'); // Specify the output format, 'image/png' is generally good
+                });
+            });
+
+            try {
+                // Wait for all individual character image blobs to be created
+                await Promise.all(promises);
+                resolve(cutRects); // Resolve the main promise with the updated fontData.characters array
+            } catch (error) {
+                reject(new Error("Error during character image processing: " + error.message));
+            }
+        };
+
+        // 2. Handle image loading errors
+        img.onerror = (errorEvent) => {
+            reject(new Error(`Failed to load original image Blob: ${errorEvent.message || 'Unknown error'}`));
+        };
+
+        // 3. Set the image source to the Object URL of the original Blob
+        // This starts the asynchronous loading process
+        img.src = URL.createObjectURL(originalImageBlob);
+    });
+
+}
