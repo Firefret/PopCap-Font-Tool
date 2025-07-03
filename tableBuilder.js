@@ -69,6 +69,7 @@ function drawTable(fontData) {
         th.style.cssText = `
             padding: 12px 15px;
         `;
+        th.style.width = "fit-content";
         headerRow.appendChild(th);
     });
     
@@ -96,12 +97,14 @@ function drawTable(fontData) {
         } else {
             charCell.textContent = char.character;
         }
+        charCell.style.width = "fit-content";
         row.appendChild(charCell);
 
         
         // Width cell
         const widthCell = document.createElement('td');
         widthCell.style.padding = '12px 15px';
+        widthCell.style.width = "fit-content";
         //widthCell.textContent = char.width;
         row.appendChild(widthCell);
         const widthValue = document.createElement("input");
@@ -111,7 +114,7 @@ function drawTable(fontData) {
             setTimeout(()=>null, 0)
             fontData.characters[index].width = parseInt(event.target.value);
             console.log(fontData)
-            fontInstance.serializeFontData()
+            fontInstance.fontRenderer(fontInstance.fontPreviewArea);
         })
         widthCell.appendChild(widthValue);
 
@@ -119,6 +122,7 @@ function drawTable(fontData) {
         // Rectangle cell
         const rectCell = document.createElement('td');
         rectCell.style.padding = '12px 15px';
+        rectCell.style.width = "fit-content";
         row.appendChild(rectCell);
         const rectValue = document.createElement("input");
         rectValue.type = "text";
@@ -126,7 +130,8 @@ function drawTable(fontData) {
         rectValue.addEventListener("keyup", function(event) {
             fontData.characters[index].rect = event.target.value.split(",");
             console.log(fontData)
-            fontInstance.serializeFontData()
+                fontInstance.fontRenderer(fontInstance.fontPreviewArea);
+
         })
         rectCell.appendChild(rectValue);
         
@@ -145,7 +150,8 @@ function drawTable(fontData) {
                     fontData.characters[index].offset[ind] = parseInt(val);
                 })
                 console.dir(fontData);
-                fontInstance.serializeFontData()
+
+                fontInstance.fontRenderer(fontInstance.fontPreviewArea);
             })
             offsetCell.appendChild(offsetValue)
 
@@ -294,6 +300,7 @@ function createKerningTable(kerningData, container) {
             kerningData[pair] = parseInt(pairValueInput.parentElement.nextElementSibling.lastChild.value);
             fontInstance.serializeFontData()
             console.dir(kerningData);
+            fontInstance.fontRenderer(fontInstance.fontPreviewArea);
         });
         pairCell.appendChild(pairValueInput);
 
@@ -306,7 +313,7 @@ function createKerningTable(kerningData, container) {
         adjustmentValueInput.type = "number"; // Use type="number" for numerical input
         adjustmentValueInput.value = parseInt(adjustment);
         adjustmentValueInput.style.width = '60px'; // Example styling
-        adjustmentValueInput.addEventListener("keyup", function(event) { // Use 'change' for better UX
+        adjustmentValueInput.addEventListener("change", function(event) { // Use 'change' for better UX
             const newAdjustment = parseInt(event.target.value);
             if (!isNaN(newAdjustment)) {
                 // Use the 'pair' variable that was potentially updated by pairValueInput's change listener
@@ -320,6 +327,7 @@ function createKerningTable(kerningData, container) {
             }
             fontInstance.serializeFontData()
             console.dir(kerningData);
+            fontInstance.fontRenderer(fontInstance.fontPreviewArea);
 
         });
         adjustmentCell.appendChild(adjustmentValueInput);

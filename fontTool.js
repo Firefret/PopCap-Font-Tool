@@ -1,5 +1,7 @@
 import drawTable from './tableBuilder.js';
 import * as windows1251 from './windows-1251.js';
+import * as imageUtil from './imageUtil.js';
+
 
 const FILEINPUT = document.getElementById("fontdata");
 const FINEINPUTLABEL = document.getElementById("fontdatalabel");
@@ -11,49 +13,120 @@ let fontInstance;
 let fontFiles = [];
 
 class Font {
-    constructor(text/*, images*/) {
+    constructor(text, images) {
+        window.fontInstance = this;
         this.appendix = "";
-        this.serialized = "";
         this.text = text;
-        //this.images = images;
+        this.images = images;
+        this.mergedFont = null; // Will be set after merging
+        this.fontData = null;   // Will be set after parsing
+        this.charURLs = [];
+        // Main asynchronous initialization sequence
+        this.initializeFont();
 
-        // Initialize the mergedFont property
-        this.mergedFont = null;
-
-        // Use an async IIFE to handle the async font parsing
-        (async () => {
-            try {
-                this.fontData = await this.parseFontTxt(text);
-                console.dir(this.fontData);
-
-                // Draw tables after font data is available
-                drawTable(this.fontData);
-            } catch (error) {
-                console.error("Error initializing font:", error);
-            }
-        })();
-        
-        // Call mergeFontImages and then createFontPreview when it's done
-       /* mergeFontImages(this.images).then(mergedFont => {
-            this.mergedFont = mergedFont;
-            this.createFontPreview();
-        }).catch(error => {
-            console.error("Error in font merging or preview creation:", error);
-        });*/
         this.downloadButton = document.createElement('button');
-        this.downloadButton.textContent="Save file";
+        this.downloadButton.textContent = "Save file";
         this.downloadButton.id = "downloadButton";
 
         this.downloadButton.onclick = () => {
-            this.downloadSerializedFontFile(this.text.name)
-        }
+            this.downloadSerializedFontFile(this.text.name);
+        };
         UPLOADFILES.appendChild(this.downloadButton);
         UPLOADFILES.style.position = "sticky";
-        UPLOADFILES.style.top = "5px"
-        UPLOADFILES.style.overflow = "auto"
+        UPLOADFILES.style.top = "5px";
+        UPLOADFILES.style.overflow = "auto";
+        //PopCap Font Tool by Firefret
     }
 
-    async createFontPreview() {
+    async initializeFont() {
+            // 1. Merge images (async)
+            this.mergedFont = await imageUtil.mergeFontImages(this.images);
+            console.log("Merged font image available.");
+            this.fontPreviewArea = this.createFontPreview(); // Now this will have mergedFont available
+            // 2. Parse font data (async)
+            this.fontData = await this.parseFontTxt(this.text);
+            console.dir(this.fontData);
+            drawTable(this.fontData); // Draw tables after font data is available
+
+            // 3. Cut font to chars using the MERGED font (async)
+            // Ensure fontData is passed correctly (it should be an array of characters with rects)
+            if (this.fontData && this.fontData.characters) {
+                await imageUtil.cutImageBlobToPieces(this.mergedFont, this.fontData.characters);
+                console.log("Characters cut into individual blobs.");
+            } else {
+                console.warn("Font data or characters array not found, skipping character cutting.");
+            }
+
+    }
+    async fontRenderer(previewArea){
+        if(fontInstance.charURLs.length > 0){
+            while(fontInstance.charURLs[0]){
+                URL.revokeObjectURL(fontInstance.charURLs[0]);
+                fontInstance.charURLs.shift();
+
+            }
+        }
+        await imageUtil.cutImageBlobToPieces(this.mergedFont, this.fontData.characters)
+        previewArea.innerHTML = '';
+        let inputField = document.getElementById('livePreviewInput');
+        let inputArray = inputField.value.split('');
+        let zValue = 0;
+        let widthAccumulator = 0
+        inputArray.forEach((char, index) => {
+            let img = document.createElement('img');
+            let charInstance = fontInstance.fontData.characters.find(charObj => charObj.character === char);
+
+            if(char === " "){ //If the char is a space
+                let spaceDiv = document.createElement('div');
+                spaceDiv.style.width = `${fontInstance.spaceValue}px`;
+                spaceDiv.style.height = `${fontInstance.fontData.characters[0].rect[3]}px`;
+                spaceDiv.style.display = 'inline-block';
+                spaceDiv.style.position = 'relative';
+                previewArea.appendChild(spaceDiv);
+                let previousChar = spaceDiv.previousElementSibling;
+                if(previousChar instanceof HTMLDivElement){ //And if the previous one is also a space
+                    spaceDiv.style.left = previousChar.style.left;
+                } else {
+                    spaceDiv.style.left = `-${widthAccumulator}px`;
+                    widthAccumulator += fontInstance.spaceValue;
+                }
+            }
+            else{
+                let url = URL.createObjectURL(charInstance.charImage);
+                img.src = url;
+                fontInstance.charURLs.push(url)
+                img.style.position = 'relative';
+                img.dataset.nextcharmoveleft = charInstance.rect[2] - charInstance.width;
+                img.style.zIndex = zValue++;
+
+                previewArea.appendChild(img);
+                let previousChar = img.previousElementSibling;
+                if(!previousChar){//If the character is the first one
+                    img.style.left = `${charInstance.offset[0]+(charInstance.rect[2] - charInstance.width)}px`;
+                }
+                if(previousChar instanceof HTMLImageElement){ //If there's a character before
+
+                    //Handle kerning
+                    //Find if this one and the previous one form an existent kerning pair
+                    let charPair = `${inputArray[index - 1]}${char}`;
+                    if (charPair in fontInstance.fontData.kerning) {
+                        const kerningValue = fontInstance.fontData.kerning[charPair];
+                        console.log(`${charPair}: ${kerningValue}`);
+                        widthAccumulator -= kerningValue; // <-- minus instead of plus
+                    }
+                    img.style.left = `${(widthAccumulator - charInstance.offset[0]) * (-1)}px`;
+                    widthAccumulator += ((charInstance.rect[2]  - charInstance.width));
+
+                }
+                else if(previousChar instanceof HTMLDivElement){ //If there's a space before
+                    img.style.left = `-${widthAccumulator - charInstance.offset[0]-fontInstance.spaceValue}px`;
+                    widthAccumulator += ((charInstance.rect[2]  - charInstance.width)-fontInstance.spaceValue);
+                }
+            }
+        })
+    }
+    createFontPreview() {
+        let fontPreviewArea;
         // Remove previous image preview if it exists
         const existingPreview = document.getElementById('imageWindow');
         if (existingPreview) {
@@ -118,12 +191,16 @@ class Font {
             if (!topRow) {
                 topRow = document.createElement('div');
                 topRow.id = 'topRowContainer';
+
                 topRow.style.cssText = `
             display: flex;
             gap: 10px;
             align-items: start;
             margin-bottom: 20px;
         `;
+                topRow.style.position = 'sticky';
+                topRow.style.top = '10px';
+                topRow.style.zIndex = '1000';
                 parent.insertBefore(topRow, parent.firstChild);
                 topRow.appendChild(uploadElement);
             }
@@ -147,7 +224,7 @@ class Font {
             // Make upload area twice the height of the preview
             uploadElement.style.height = `${scrollDiv.getBoundingClientRect().height * 2}px`;
 
-            this.createLivePreviewElement();
+             fontPreviewArea = this.createLivePreviewElement();
 
             // Cleanup object URLs on unload
             window.addEventListener('unload', () => {
@@ -157,6 +234,7 @@ class Font {
                 });
             });
         }
+        return fontPreviewArea;
     }
 
     createLivePreviewElement() {
@@ -207,7 +285,9 @@ class Font {
         padding: 5px;
         box-sizing: border-box;
     `;
-
+    inputField.addEventListener('input', () => {
+       fontInstance.fontRenderer(fontInstance.fontPreviewArea);
+    })
         // Assemble the element
         livePreviewWrapper.appendChild(livePreviewArea);
         livePreviewWrapper.appendChild(inputField);
@@ -217,6 +297,7 @@ class Font {
         if (previewColumn) {
             previewColumn.appendChild(livePreviewWrapper);
         }
+        return livePreviewArea;
     }
 
     async parseFontTxt(txt) {
@@ -226,7 +307,7 @@ class Font {
             reader.onload = (e) => resolve(e.target.result);
             reader.readAsText(txt, 'windows-1251');
         });
-
+        this.spaceValue = parseInt(fileContent.match(/LayerSetCharWidths\s+Main\s+\('\s+'\)\s+\((\d+)\);/)[1]);
         // Create the result object with characters array
         const result = {
             characters: []
@@ -638,32 +719,32 @@ function handleFileSelection(event) {
         }
     }
 
-    /*if (fontImages.length > 0 && fontText) {
+    if (fontImages.length > 0 && fontText) {
         for (let image of fontImages) {
             if (!image.name.includes(fontName)) {
                 FINEINPUTLABEL.innerHTML = "One or all of the image file names do not match the .txt file name <br>";
                 FILEINPUT.value = null;
                 return;
             }
-        } */
-    if(fontText){
+        }
+        if (fontText) {
 
-        let txtName = document.createElement("li");
-        txtName.textContent = fontText.name;
-        FILESLIST.appendChild(txtName);
+            let txtName = document.createElement("li");
+            txtName.textContent = fontText.name;
+            FILESLIST.appendChild(txtName);
 
-        /*for (let image of fontImages) {
-            let imgName = document.createElement("li");
-            imgName.textContent = image.name;
-            FILESLIST.appendChild(imgName);
-        }*/
+            for (let image of fontImages) {
+                let imgName = document.createElement("li");
+                imgName.textContent = image.name;
+                FILESLIST.appendChild(imgName);
+            }
 
-        FINEINPUTLABEL.innerHTML = "Files Selected <br>";
-        fontInstance = new Font(fontText/*, fontImages*/);
-        window.fontInstance = fontInstance;
-        console.dir(fontInstance);
-    } else {
-        FINEINPUTLABEL.innerHTML = "Please select a .txt file <br>";
-        FILEINPUT.value = null;
+            FINEINPUTLABEL.innerHTML = "Files Selected <br>";
+            fontInstance = new Font(fontText, fontImages);
+            //window.fontInstance = fontInstance;
+        } else {
+            FINEINPUTLABEL.innerHTML = "Please select a .txt file <br>";
+            FILEINPUT.value = null;
+        }
     }
 }
