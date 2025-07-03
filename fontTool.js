@@ -72,11 +72,11 @@ class Font {
         let inputArray = inputField.value.split('');
         let zValue = 0;
         let widthAccumulator = 0
-        inputArray.forEach(char => {
+        inputArray.forEach((char, index) => {
             let img = document.createElement('img');
             let charInstance = fontInstance.fontData.characters.find(charObj => charObj.character === char);
 
-            if(char === " "){
+            if(char === " "){ //If the char is a space
                 let spaceDiv = document.createElement('div');
                 spaceDiv.style.width = `${fontInstance.spaceValue}px`;
                 spaceDiv.style.height = `${fontInstance.fontData.characters[0].rect[3]}px`;
@@ -84,7 +84,7 @@ class Font {
                 spaceDiv.style.position = 'relative';
                 previewArea.appendChild(spaceDiv);
                 let previousChar = spaceDiv.previousElementSibling;
-                if(previousChar instanceof HTMLDivElement){
+                if(previousChar instanceof HTMLDivElement){ //And if the previous one is also a space
                     spaceDiv.style.left = previousChar.style.left;
                 } else {
                     spaceDiv.style.left = `-${widthAccumulator}px`;
@@ -101,14 +101,24 @@ class Font {
 
                 previewArea.appendChild(img);
                 let previousChar = img.previousElementSibling;
-                if(!previousChar){
+                if(!previousChar){//If the character is the first one
                     img.style.left = `${charInstance.offset[0]+(charInstance.rect[2] - charInstance.width)}px`;
                 }
-                if(previousChar instanceof HTMLImageElement){
-                    img.style.left = `-${widthAccumulator - charInstance.offset[0]}px`;
+                if(previousChar instanceof HTMLImageElement){ //If there's a character before
+
+                    //Handle kerning
+                    //Find if this one and the previous one form an existent kerning pair
+                    let charPair = `${inputArray[index - 1]}${char}`;
+                    if (charPair in fontInstance.fontData.kerning) {
+                        const kerningValue = fontInstance.fontData.kerning[charPair];
+                        console.log(`${charPair}: ${kerningValue}`);
+                        widthAccumulator -= kerningValue; // <-- minus instead of plus
+                    }
+                    img.style.left = `${(widthAccumulator - charInstance.offset[0]) * (-1)}px`;
                     widthAccumulator += ((charInstance.rect[2]  - charInstance.width));
+
                 }
-                else if(previousChar instanceof HTMLDivElement){
+                else if(previousChar instanceof HTMLDivElement){ //If there's a space before
                     img.style.left = `-${widthAccumulator - charInstance.offset[0]-fontInstance.spaceValue}px`;
                     widthAccumulator += ((charInstance.rect[2]  - charInstance.width)-fontInstance.spaceValue);
                 }

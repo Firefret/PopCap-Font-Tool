@@ -300,6 +300,7 @@ function createKerningTable(kerningData, container) {
             kerningData[pair] = parseInt(pairValueInput.parentElement.nextElementSibling.lastChild.value);
             fontInstance.serializeFontData()
             console.dir(kerningData);
+            fontInstance.fontRenderer(fontInstance.fontPreviewArea);
         });
         pairCell.appendChild(pairValueInput);
 
@@ -312,7 +313,7 @@ function createKerningTable(kerningData, container) {
         adjustmentValueInput.type = "number"; // Use type="number" for numerical input
         adjustmentValueInput.value = parseInt(adjustment);
         adjustmentValueInput.style.width = '60px'; // Example styling
-        adjustmentValueInput.addEventListener("keyup", function(event) { // Use 'change' for better UX
+        adjustmentValueInput.addEventListener("change", function(event) { // Use 'change' for better UX
             const newAdjustment = parseInt(event.target.value);
             if (!isNaN(newAdjustment)) {
                 // Use the 'pair' variable that was potentially updated by pairValueInput's change listener
@@ -326,6 +327,7 @@ function createKerningTable(kerningData, container) {
             }
             fontInstance.serializeFontData()
             console.dir(kerningData);
+            fontInstance.fontRenderer(fontInstance.fontPreviewArea);
 
         });
         adjustmentCell.appendChild(adjustmentValueInput);
