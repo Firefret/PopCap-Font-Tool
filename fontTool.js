@@ -109,7 +109,7 @@ class Font {
                     //Handle kerning
                     //Find if this one and the previous one form an existent kerning pair
                     let charPair = `${inputArray[index - 1]}${char}`;
-                    if (charPair in fontInstance.fontData.kerning) {
+                    if (fontInstance.fontData.kerning && charPair in fontInstance.fontData.kerning) {
                         const kerningValue = fontInstance.fontData.kerning[charPair];
                         console.log(`${charPair}: ${kerningValue}`);
                         widthAccumulator -= kerningValue; // <-- minus instead of plus
