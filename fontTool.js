@@ -1,3 +1,5 @@
+
+
 import drawTable from './tableBuilder.js';
 import * as windows1251 from './windows-1251.js';
 import * as imageUtil from './imageUtil.js';
@@ -21,6 +23,9 @@ class Font {
         this.mergedFont = null; // Will be set after merging
         this.fontData = null;   // Will be set after parsing
         this.charURLs = [];
+        this.isMagnified = false; // New property to track magnification state
+        this.magnifiedOverlay = null; // New property to hold the magnification overlay
+
         // Main asynchronous initialization sequence
         this.initializeFont();
 
@@ -39,23 +44,23 @@ class Font {
     }
 
     async initializeFont() {
-            // 1. Merge images (async)
-            this.mergedFont = await imageUtil.mergeFontImages(this.images);
-            console.log("Merged font image available.");
-            this.fontPreviewArea = this.createFontPreview(); // Now this will have mergedFont available
-            // 2. Parse font data (async)
-            this.fontData = await this.parseFontTxt(this.text);
-            console.dir(this.fontData);
-            drawTable(this.fontData); // Draw tables after font data is available
+        // 1. Merge images (async)
+        this.mergedFont = await imageUtil.mergeFontImages(this.images);
+        console.log("Merged font image available.");
+        this.fontPreviewArea = this.createFontPreview(); // Now this will have mergedFont available
+        // 2. Parse font data (async)
+        this.fontData = await this.parseFontTxt(this.text);
+        console.dir(this.fontData);
+        drawTable(this.fontData); // Draw tables after font data is available
 
-            // 3. Cut font to chars using the MERGED font (async)
-            // Ensure fontData is passed correctly (it should be an array of characters with rects)
-            if (this.fontData && this.fontData.characters) {
-                await imageUtil.cutImageBlobToPieces(this.mergedFont, this.fontData.characters);
-                console.log("Characters cut into individual blobs.");
-            } else {
-                console.warn("Font data or characters array not found, skipping character cutting.");
-            }
+        // 3. Cut font to chars using the MERGED font (async)
+        // Ensure fontData is passed correctly (it should be an array of characters with rects)
+        if (this.fontData && this.fontData.characters) {
+            await imageUtil.cutImageBlobToPieces(this.mergedFont, this.fontData.characters);
+            console.log("Characters cut into individual blobs.");
+        } else {
+            console.warn("Font data or characters array not found, skipping character cutting.");
+        }
 
     }
     async fontRenderer(previewArea){
@@ -124,6 +129,10 @@ class Font {
                 }
             }
         })
+        // If magnification is active, update the magnified view as well
+        if (this.isMagnified) {
+            this.magnifyLivePreview(previewArea);
+        }
     }
     createFontPreview() {
         let fontPreviewArea;
@@ -159,9 +168,9 @@ class Font {
     display: inline-block;
 `;
 
-        // No need to wait for mergedFont - we know it's ready because 
+        // No need to wait for mergedFont - we know it's ready because
         // createFontPreview is only called after mergeFontImages resolves
-        
+
         const img = document.createElement('img');
         console.log(this.mergedFont);
 
@@ -224,7 +233,7 @@ class Font {
             // Make upload area twice the height of the preview
             uploadElement.style.height = `${scrollDiv.getBoundingClientRect().height * 2}px`;
 
-             fontPreviewArea = this.createLivePreviewElement();
+            fontPreviewArea = this.createLivePreviewElement();
 
             // Cleanup object URLs on unload
             window.addEventListener('unload', () => {
@@ -275,7 +284,7 @@ class Font {
         /* No position: relative needed here anymore for the button */
     `;
 
-        // Create a container for the input field and color picker button
+        // Create a container for the input field and buttons
         const inputContainer = document.createElement('div');
         inputContainer.style.cssText = `
         display: flex; /* Use flexbox to align input and button horizontally */
@@ -331,7 +340,7 @@ class Font {
         background-color: #555; /* Darker background for the button */
         border: 1px solid black; /* Match border of input field */
         border-left: none; /* Remove left border to blend with input */
-        border-radius: 0 3px 3px 0; /* Round only the right corners */
+        border-radius: 0 0 0 0; /* No rounding yet, handled by combined styling */
         cursor: pointer;
         display: flex;
         align-items: center;
@@ -342,7 +351,6 @@ class Font {
         box-sizing: border-box; /* Include padding/border in element's total width/height */
         flex-shrink: 0; /* Prevent button from shrinking */
     `;
-
         // Event listener for the color picker input
         colorPickerInput.addEventListener('input', (event) => {
             livePreviewArea.style.backgroundColor = event.target.value;
@@ -354,9 +362,52 @@ class Font {
             colorPickerInput.click();
         });
 
+
+        // New: Magnify Button
+        const magnifyButton = document.createElement('button');
+        magnifyButton.id = 'magnifyLivePreviewButton';
+        magnifyButton.textContent = '🔍'; // Magnifying glass emoji
+        magnifyButton.title = 'Toggle Magnified View';
+        magnifyButton.style.cssText = `
+            width: 35px; /* Adjust width as needed */
+            height: 35px; /* Match height of input field + padding */
+            background-color: #555; /* Darker background for the button */
+            border: 1px solid black; /* Match border of input field */
+            border-left: none; /* Remove left border to blend with input */
+            border-radius: 0 3px 3px 0; /* Round only the right corners for the last button */
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px; /* Slightly larger emoji */
+            line-height: 1;
+            color: white;
+            box-sizing: border-box; /* Include padding/border in element's total width/height */
+            flex-shrink: 0; /* Prevent button from shrinking */
+        `;
+
+        // Adjust the border-radius of the colorPickerButton to be square on the right
+        colorPickerButton.style.borderRadius = '0';
+
+        magnifyButton.addEventListener('click', () => {
+            this.isMagnified = !this.isMagnified; // Toggle magnification state
+            if (this.isMagnified) {
+                magnifyButton.style.backgroundColor = '#777'; // Indicate active state
+                this.magnifyLivePreview(livePreviewArea);
+            } else {
+                magnifyButton.style.backgroundColor = '#555'; // Reset color
+                if (this.magnifiedOverlay) {
+                    this.magnifiedOverlay.remove();
+                    this.magnifiedOverlay = null;
+                }
+            }
+        });
+
+
         // Assemble the input container
         inputContainer.appendChild(inputField);
         inputContainer.appendChild(colorPickerButton); // Add the visible button
+        inputContainer.appendChild(magnifyButton); // Add the new magnify button
         inputContainer.appendChild(colorPickerInput);  // Add the hidden color input (can be anywhere, as it's hidden)
 
         // Assemble the main wrapper element
@@ -369,6 +420,274 @@ class Font {
             previewColumn.appendChild(livePreviewWrapper);
         }
         return livePreviewArea;
+    }
+
+    async magnifyLivePreview(elementToMagnify) {
+        if (!window.html2canvas) {
+            console.error("html2canvas library is not loaded. Please include it.");
+            return;
+        }
+
+        // Create or get the magnification overlay
+        if (!this.magnifiedOverlay) {
+            this.magnifiedOverlay = document.createElement('div');
+            this.magnifiedOverlay.id = 'magnifiedLivePreviewOverlay';
+            this.magnifiedOverlay.style.cssText = `
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.7);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 9999;
+            cursor: default;
+            overflow: hidden;
+        `;
+            // Only close if clicking on the background, not the slider or image
+            this.magnifiedOverlay.addEventListener('click', (event) => {
+                if (event.target === this.magnifiedOverlay || event.target.id === 'magnifiedImageContainer') {
+                    this.isMagnified = false;
+                    const magnifyButton = document.getElementById('magnifyLivePreviewButton');
+                    if (magnifyButton) {
+                        magnifyButton.style.backgroundColor = '#555'; // Reset button color
+                    }
+                    this.magnifiedOverlay.remove();
+                    this.magnifiedOverlay = null;
+                }
+            });
+            document.body.appendChild(this.magnifiedOverlay);
+
+            // Close Button
+            const closeButton = document.createElement('button');
+            closeButton.id = 'magnifiedCloseButton';
+            closeButton.textContent = '✖'; // Unicode multiplication sign for 'X'
+            closeButton.title = 'Close Magnified Preview';
+            closeButton.style.cssText = `
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background-color: rgba(255, 0, 0, 0.8); /* Red, slightly transparent */
+            color: white;
+            border: none;
+            border-radius: 50%; /* Make it circular */
+            width: 40px;
+            height: 40px;
+            font-size: 20px;
+            font-weight: bold;
+            cursor: pointer;
+            z-index: 10001; /* Ensure it's above everything else */
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+            transition: background-color 0.2s ease;
+        `;
+            closeButton.addEventListener('mouseenter', () => {
+                closeButton.style.backgroundColor = 'red';
+            });
+            closeButton.addEventListener('mouseleave', () => {
+                closeButton.style.backgroundColor = 'rgba(255, 0, 0, 0.8)';
+            });
+            closeButton.addEventListener('click', (event) => {
+                event.stopPropagation();
+                this.isMagnified = false;
+                const magnifyButton = document.getElementById('magnifyLivePreviewButton');
+                if (magnifyButton) {
+                    magnifyButton.style.backgroundColor = '#555';
+                }
+                this.magnifiedOverlay.remove();
+                this.magnifiedOverlay = null;
+            });
+            this.magnifiedOverlay.appendChild(closeButton);
+
+            // Container for the draggable image (this will also be our "drop target")
+            const draggableImageContainer = document.createElement('div');
+            draggableImageContainer.id = 'magnifiedImageContainer';
+            draggableImageContainer.style.cssText = `
+            position: relative;
+            width: 100%;
+            height: calc(100% - 70px); /* Leave space for the slider */
+            overflow: hidden;
+        `;
+            draggableImageContainer.ondragover = (e) => {
+                e.preventDefault();
+                e.dataTransfer.dropEffect = "move";
+            };
+            draggableImageContainer.ondrop = (e) => {
+                e.preventDefault();
+            };
+            this.magnifiedOverlay.appendChild(draggableImageContainer);
+
+            // Create the slider for scale control
+            const scaleSlider = document.createElement('input');
+            scaleSlider.type = 'range';
+            scaleSlider.min = '1';
+            scaleSlider.max = '5';
+            scaleSlider.value = '3';
+            scaleSlider.step = '0.1';
+            scaleSlider.id = 'magnifiedScaleSlider';
+            scaleSlider.style.cssText = `
+            position: absolute;
+            bottom: 20px;
+            width: 90%;
+            max-width: 500px;
+            z-index: 10000;
+            cursor: grab;
+            -webkit-appearance: none;
+            height: 8px;
+            background: #d3d3d3;
+            outline: none;
+            opacity: 0.7;
+            -webkit-transition: .2s;
+            transition: opacity .2s;
+            border-radius: 5px;
+        `;
+            scaleSlider.style.setProperty('--webkit-slider-thumb', `
+            -webkit-appearance: none;
+            appearance: none;
+            width: 25px;
+            height: 25px;
+            border-radius: 50%;
+            background: #4CAF50;
+            cursor: pointer;
+        `);
+            scaleSlider.style.setProperty('--moz-range-thumb', `
+            width: 25px;
+            height: 25px;
+            border-radius: 50%;
+            background: #4CAF50;
+            cursor: pointer;
+        `);
+            scaleSlider.style.setProperty('--moz-range-track', `
+            width: 100%;
+            height: 8px;
+            background: #d3d3d3;
+            border-radius: 5px;
+        `);
+
+            this.magnifiedOverlay.appendChild(scaleSlider);
+
+        } else {
+            const draggableImageContainer = this.magnifiedOverlay.querySelector('#magnifiedImageContainer');
+            const existingSlider = this.magnifiedOverlay.querySelector('#magnifiedScaleSlider');
+            const existingCloseButton = this.magnifiedOverlay.querySelector('#magnifiedCloseButton');
+
+            draggableImageContainer.innerHTML = '';
+
+            if (!this.magnifiedOverlay.contains(draggableImageContainer)) {
+                this.magnifiedOverlay.appendChild(draggableImageContainer);
+            }
+            if (!this.magnifiedOverlay.contains(existingSlider)) {
+                this.magnifiedOverlay.appendChild(existingSlider);
+            }
+            if (!this.magnifiedOverlay.contains(existingCloseButton)) {
+                this.magnifiedOverlay.appendChild(existingCloseButton);
+            }
+        }
+
+        const scaleSliderElement = this.magnifiedOverlay.querySelector('#magnifiedScaleSlider');
+        const draggableImageContainer = this.magnifiedOverlay.querySelector('#magnifiedImageContainer');
+        const initialScale = parseFloat(scaleSliderElement.value);
+
+        try {
+            const canvas = await html2canvas(elementToMagnify, {
+                scale: 1,
+                useCORS: true,
+                backgroundColor: elementToMagnify.style.backgroundColor || '#d3d3d3'
+            });
+
+            const img = document.createElement('img');
+            img.src = canvas.toDataURL('image/png');
+            img.draggable = true;
+            img.style.cssText = `
+            position: absolute;
+            max-width: none;
+            max-height: none;
+            border: 2px solid white;
+            box-shadow: 0 0 20px rgba(0,0,0,0.5);
+            image-rendering: pixelated;
+            cursor: grab;
+            top: 50%; /* Keep vertical centering */
+        `;
+
+            draggableImageContainer.appendChild(img);
+
+            // --- HTML Drag and Drop API implementation ---
+            let startX, startY;
+            let initialTranslateX, initialTranslateY;
+
+            img.ondragstart = (e) => {
+                e.dataTransfer.setData('text/plain', 'magnified-image');
+                e.dataTransfer.setDragImage(new Image(), 0, 0);
+
+                const transformMatch = img.style.transform.match(/translate\(([-\d.]+)px,\s*([-\d.]+)px\)/);
+                initialTranslateX = transformMatch ? parseFloat(transformMatch[1]) : 0;
+                initialTranslateY = transformMatch ? parseFloat(transformMatch[2]) : 0;
+                startX = e.clientX;
+                startY = e.clientY;
+
+                draggableImageContainer.style.cursor = 'grabbing';
+            };
+
+            img.ondrag = (e) => {
+                if (e.clientX === 0 && e.clientY === 0) return;
+
+                const dx = e.clientX - startX;
+                const dy = e.clientY - startY;
+
+                let newX = initialTranslateX + dx;
+                let newY = initialTranslateY + dy;
+
+                img.style.transform = `translate(${newX}px, ${newY}px) scale(${parseFloat(scaleSliderElement.value)})`;
+            };
+
+            img.ondragend = () => {
+                draggableImageContainer.style.cursor = 'grab';
+            };
+
+            // Add event listener to the slider to update the image scale
+            scaleSliderElement.oninput = () => {
+                const newScale = parseFloat(scaleSliderElement.value);
+                const transformMatch = img.style.transform.match(/translate\(([-\d.]+)px,\s*([-\d.]+)px\)/);
+                let currentTranslateX = transformMatch ? parseFloat(transformMatch[1]) : 0;
+                let currentTranslateY = transformMatch ? parseFloat(transformMatch[2]) : 0;
+
+                img.style.transform = `translate(${currentTranslateX}px, ${currentTranslateY}px) scale(${newScale})`;
+            };
+
+            // --- CHANGE: Position the left edge in the center of the screen ---
+            img.onload = () => {
+                const containerRect = draggableImageContainer.getBoundingClientRect();
+
+                // Calculate scaled dimensions (important for correct positioning)
+                const scaledWidth = canvas.width * initialScale;
+                const scaledHeight = canvas.height * initialScale;
+
+                // Calculate offsetX: half of the container's width (which is the center)
+                // Minus the image's current left offset (which is 0 when using transform-origin 0 0)
+                let offsetX = containerRect.width / 2;
+
+                // Calculate offsetY: half of the container's height minus half of the scaled image's height
+                let offsetY = (containerRect.height - scaledHeight) / 4;
+
+
+                // Apply initial positioning and scale
+                // We use transform-origin: 0 0; so translate(x,y) positions the top-left corner
+                img.style.transform = `translate(${offsetX}px, ${offsetY}px) scale(${initialScale})`;
+
+                // Store this initial position as the starting point for future drags
+                initialTranslateX = offsetX;
+                initialTranslateY = offsetY;
+            };
+
+        } catch (error) {
+            console.error("Error capturing live preview for magnification:", error);
+            draggableImageContainer.innerHTML = '<p style="color: white;">Error magnifying preview. Check console for details.</p>';
+        }
     }
 
     async parseFontTxt(txt) {
@@ -579,7 +898,7 @@ class Font {
         }
     }
 
-     serializeFontData(data = this.fontData, appendix = this.appendix) {
+    serializeFontData(data = this.fontData, appendix = this.appendix) {
         let serializedString = "";
         const INDENT = "  "; // Two spaces for indentation
 
@@ -713,39 +1032,33 @@ class Font {
             serializedString += `Define KerningValues\n  (\n${serializedKerningValues}\n  );\n\n`;
         }
 
-        // --- Append the appendix ---
-        if (appendix && appendix.length > 0) {
-            serializedString += appendix + "\n"; // Add appendix, followed by a newline
+        // Add the appendix at the end if it exists
+        if (appendix) {
+            serializedString += `${appendix}\n`;
         }
 
-        // ** NEW: Encode the serialized string to Windows-1251 **
-         // This returns a Uint8Array
-        // To turn it into a Blob, you'll typically use:
-        // const blob = new Blob([encodedData], { type: 'application/octet-stream' });
-        // or if it's meant to be a text file with windows-1251 encoding:
-        // const blob = new Blob([encodedData], { type: 'text/plain; charset=windows-1251' });
-
-        // The function is currently returning a string. If you need to return the encoded Uint8Array
-        // or a Blob directly, you would modify the return statement.
-        // For now, I'll return the encoded Uint8Array as it's the direct result of the encoding step.
-        return windows1251.encode(serializedString); // Return the Uint8Array of windows-1251 encoded bytes
+        return serializedString;
     }
 
-    downloadSerializedFontFile(filename) {
-        let content = this.serializeFontData();
-        console.log(content);
-        const blob = new Blob([content], { type: 'text/plain;charset=windows-1251' }); // Specify Windows-1251 encoding
-        const url = URL.createObjectURL(blob);
+    downloadSerializedFontFile(originalFileName) {
+        const serializedContent = this.serializeFontData();
+        const blob = new Blob([windows1251.encode(serializedContent)], {
+            type: 'text/plain;charset=windows-1251'
+        });
 
+        // Create a download link
         const a = document.createElement('a');
-        a.href = url;
-        a.download = filename;
-        document.body.appendChild(a); // Append to body is necessary for Firefox
-        a.click();
+        a.href = URL.createObjectURL(blob);
+        // Ensure the filename ends with .txt
+        const fileName = originalFileName.endsWith('.txt') ? originalFileName : `${originalFileName}.txt`;
+        a.download = fileName;
 
-        // Clean up: remove the element and revoke the URL
+        // Append to body and click it programmatically
+        document.body.appendChild(a);
+        a.click();
+        // Clean up
         document.body.removeChild(a);
-        URL.revokeObjectURL(url);
+        URL.revokeObjectURL(a.href);
     }
 }
 
