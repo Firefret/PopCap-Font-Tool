@@ -24,17 +24,67 @@ export async function removeBlack(imageFile) {
                 const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
                 const data = imageData.data;
 
-                // Process pixels
-                for (let i = 0; i < data.length; i += 4) {
-                    const red = data[i];
-                    const green = data[i + 1];
-                    const blue = data[i + 2];
+                // --- Start of improved pixel processing ---
+                // Adjustable parameters for black removal
+                const blacknessThreshold = 0; // Pixels with R, G, B components below this are considered "blackish"
+                // Adjust this value (0-255) to control sensitivity.
+                // Lower values target darker blacks; higher values affect more greys.
 
-                    // If pixel is pure black, make it transparent
-                    if (red === 0 && green === 0 && blue === 0) {
-                        data[i + 3] = 0; // Set alpha to 0
+                for (let i = 0; i < data.length; i += 4) {
+                    const r = data[i];
+                    const g = data[i + 1];
+                    const b = data[i + 2];
+                    const originalAlpha = data[i + 3]; // Store original alpha
+
+                    // Calculate the "maximum" color component for this pixel
+                    // A lower `maxComponent` indicates a darker pixel.
+                    const maxComponent = Math.max(r, g, b);
+
+                    // Calculate how "black" the pixel is.
+                    // A value of 255 means pure black, 0 means no black (pure white/full color).
+                    const blackness = 255 - maxComponent;
+
+                    // If the pixel is considered "blackish" based on our threshold
+                    if (blackness > blacknessThreshold) {
+                        // Calculate a transparency factor.
+                        // We want pixels closer to pure black (blackness = 255) to be fully transparent (alpha = 0).
+                        // Pixels at the `blacknessThreshold` should retain more of their original alpha.
+                        // We'll normalize `blackness` relative to the threshold and 255.
+                        let transparencyFactor;
+                        if (blackness >= 255) { // Pure black
+                            transparencyFactor = 0;
+                        } else {
+                            // Linearly interpolate transparency.
+                            // If blackness is `blacknessThreshold`, factor is 1 (fully opaque based on this part of logic).
+                            // If blackness is 255, factor is 0 (fully transparent).
+                            transparencyFactor = 1 - ((blackness - blacknessThreshold) / (255 - blacknessThreshold));
+                            if (transparencyFactor < 0) transparencyFactor = 0; // Ensure it doesn't go negative
+                        }
+
+                        // Apply the new transparency while also considering the original alpha
+                        data[i + 3] = originalAlpha * transparencyFactor;
+
+                        // --- Attempt to remove black tint (the "Photoshop-style" part) ---
+                        // This is the tricky part. If we've made the pixel more transparent
+                        // because it was dark, we want to "lighten" its remaining color
+                        // so it doesn't look like a dark, semi-transparent smudge.
+
+                        // The idea is to blend the original color with white,
+                        // proportional to how much transparency we just added due to blackness.
+                        const newAlpha = data[i + 3];
+                        if (newAlpha < originalAlpha) { // Only if we made it more transparent
+                            // Calculate the ratio of transparency added (how much "black" we removed from the pixel's visibility)
+                            const alphaReductionRatio = (originalAlpha - newAlpha) / originalAlpha;
+
+                            // Blend R, G, B towards white (255) based on this ratio.
+                            // This effectively lifts the dark values.
+                            data[i] = r + (255 - r) * alphaReductionRatio;
+                            data[i + 1] = g + (255 - g) * alphaReductionRatio;
+                            data[i + 2] = b + (255 - b) * alphaReductionRatio;
+                        }
                     }
                 }
+                // --- End of improved pixel processing ---
 
                 // Put processed data back on canvas
                 ctx.putImageData(imageData, 0, 0);
@@ -43,11 +93,12 @@ export async function removeBlack(imageFile) {
                 canvas.toBlob((blob) => {
                     // Clean up the object URL
                     URL.revokeObjectURL(img.src);
-                    
+
                     // Create and return new URL for processed image
                     const processedImageUrl = URL.createObjectURL(blob);
                     resolve(processedImageUrl);
-                }, 'image/png');
+                }, 'image/png'); // Using 'image/png' is important for preserving transparency
+
             };
 
             img.onerror = (error) => {

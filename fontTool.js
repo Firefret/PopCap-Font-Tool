@@ -268,10 +268,19 @@ class Font {
         overflow-x: auto;
         overflow-y: hidden;
         white-space: nowrap;
-        background-color: lightgrey;
+        background-color: lightgrey; /* Default background color */
         border: 1px solid black;
         padding: 10px 0;
         box-sizing: border-box;
+        /* No position: relative needed here anymore for the button */
+    `;
+
+        // Create a container for the input field and color picker button
+        const inputContainer = document.createElement('div');
+        inputContainer.style.cssText = `
+        display: flex; /* Use flexbox to align input and button horizontally */
+        margin-top: 5px;
+        width: 100%;
     `;
 
         // Create the input field
@@ -280,17 +289,79 @@ class Font {
         inputField.id = 'livePreviewInput';
         inputField.placeholder = 'Type here for live preview...';
         inputField.style.cssText = `
-        margin-top: 5px;
-        width: 100%;
+        flex-grow: 1; /* Allow input to take up available space */
         padding: 5px;
         box-sizing: border-box;
+        border: 1px solid black; /* Add border to match other elements */
+        border-right: none; /* Remove right border to blend with button */
     `;
-    inputField.addEventListener('input', () => {
-       fontInstance.fontRenderer(fontInstance.fontPreviewArea);
-    })
-        // Assemble the element
+
+        inputField.addEventListener('input', () => {
+            if (typeof fontInstance !== 'undefined' && fontInstance.fontRenderer) {
+                fontInstance.fontRenderer(fontInstance.fontPreviewArea);
+            } else {
+                console.warn('fontInstance or fontInstance.fontRenderer is not defined.');
+            }
+        });
+
+        // Create the color picker input (hidden)
+        const colorPickerInput = document.createElement('input');
+        colorPickerInput.type = 'color';
+        colorPickerInput.id = 'livePreviewBgColorPicker';
+        colorPickerInput.value = '#d3d3d3'; // Default color: lightgrey in hex
+        colorPickerInput.style.cssText = `
+        width: 0; /* Make it effectively invisible */
+        height: 0;
+        border: none;
+        padding: 0;
+        opacity: 0;
+        overflow: hidden;
+        position: absolute; /* Hide it completely off-screen, or make it just 0x0 */
+        pointer-events: none; /* Ensure it doesn't interfere with clicks */
+    `;
+
+        // Create a visual button overlay for the color picker
+        const colorPickerButton = document.createElement('button');
+        colorPickerButton.id = 'livePreviewBgColorButton';
+        colorPickerButton.textContent = '🎨'; // Emoji for a color palette icon
+        colorPickerButton.title = 'Change Background Color';
+        colorPickerButton.style.cssText = `
+        width: 35px; /* Adjust width as needed */
+        height: 35px; /* Match height of input field + padding */
+        background-color: #555; /* Darker background for the button */
+        border: 1px solid black; /* Match border of input field */
+        border-left: none; /* Remove left border to blend with input */
+        border-radius: 0 3px 3px 0; /* Round only the right corners */
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 18px; /* Slightly larger emoji */
+        line-height: 1;
+        color: white;
+        box-sizing: border-box; /* Include padding/border in element's total width/height */
+        flex-shrink: 0; /* Prevent button from shrinking */
+    `;
+
+        // Event listener for the color picker input
+        colorPickerInput.addEventListener('input', (event) => {
+            livePreviewArea.style.backgroundColor = event.target.value;
+        });
+
+        // Make the button trigger the hidden color input
+        colorPickerButton.addEventListener('click', () => {
+            // Programmatically trigger the click on the hidden color input
+            colorPickerInput.click();
+        });
+
+        // Assemble the input container
+        inputContainer.appendChild(inputField);
+        inputContainer.appendChild(colorPickerButton); // Add the visible button
+        inputContainer.appendChild(colorPickerInput);  // Add the hidden color input (can be anywhere, as it's hidden)
+
+        // Assemble the main wrapper element
         livePreviewWrapper.appendChild(livePreviewArea);
-        livePreviewWrapper.appendChild(inputField);
+        livePreviewWrapper.appendChild(inputContainer); // Append the new input container
 
         // Add it to the preview column created in createFontPreview
         const previewColumn = document.getElementById('previewColumn');
