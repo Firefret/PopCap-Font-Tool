@@ -553,6 +553,7 @@ class FontUI {
             if(char === " "){ //If the char is a space
                 let spaceDiv = document.createElement('div');
                 spaceDiv.id = "space";
+                spaceDiv.style.width = fontInstance.spaceValue + "px";
                 previewArea.appendChild(spaceDiv);
                 let previousChar = spaceDiv.previousElementSibling;
                 if(previousChar instanceof HTMLDivElement){ //And if the previous one is also a space
