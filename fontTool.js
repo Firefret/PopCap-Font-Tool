@@ -945,6 +945,7 @@ async function handleFontUpload(textFile, imageFiles) {
         hideLoadingState();
         FILEINPUTLABEL.innerHTML = '';
         let fileNameList = [];
+        FILESLIST.innerHTML = '';
         fileNameList.push(textFile.name);
         imageFiles.forEach(imageFile => {
             fileNameList.push(imageFile.name)
