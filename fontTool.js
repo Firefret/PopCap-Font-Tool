@@ -1,694 +1,40 @@
-
-
 import drawTable from './tableBuilder.js';
 import * as windows1251 from './windows-1251.js';
 import * as imageUtil from './imageUtil.js';
 
 
 const FILEINPUT = document.getElementById("fontdata");
-const FINEINPUTLABEL = document.getElementById("fontdatalabel");
+const FILEINPUTLABEL = document.getElementById("fontdatalabel");
 const FILESLIST = document.getElementById("fileslist");
 const UPLOADFILES = document.getElementById("uploadfiles");
 
-let fontInstance;
 
-let fontFiles = [];
 
 class Font {
     constructor(text, images) {
-        window.fontInstance = this;
         this.appendix = "";
         this.text = text;
         this.images = images;
-        this.mergedFont = null; // Will be set after merging
-        this.fontData = null;   // Will be set after parsing
-        this.charURLs = [];
-        this.isMagnified = false; // New property to track magnification state
-        this.magnifiedOverlay = null; // New property to hold the magnification overlay
-
-        // Main asynchronous initialization sequence
-        this.initializeFont();
-
-        this.downloadButton = document.createElement('button');
-        this.downloadButton.textContent = "Save file";
-        this.downloadButton.id = "downloadButton";
-
-        this.downloadButton.onclick = () => {
-            this.downloadSerializedFontFile(this.text.name);
-        };
-        UPLOADFILES.appendChild(this.downloadButton);
-        UPLOADFILES.style.position = "sticky";
-        UPLOADFILES.style.top = "5px";
-        UPLOADFILES.style.overflow = "auto";
-        //PopCap Font Tool by Firefret
     }
 
-    async initializeFont() {
-        // 1. Merge images (async)
-        this.mergedFont = await imageUtil.mergeFontImages(this.images);
-        console.log("Merged font image available.");
-        this.fontPreviewArea = this.createFontPreview(); // Now this will have mergedFont available
-        // 2. Parse font data (async)
-        this.fontData = await this.parseFontTxt(this.text);
-        console.dir(this.fontData);
-        drawTable(this.fontData); // Draw tables after font data is available
-
-        // 3. Cut font to chars using the MERGED font (async)
-        // Ensure fontData is passed correctly (it should be an array of characters with rects)
-        if (this.fontData && this.fontData.characters) {
-            await imageUtil.cutImageBlobToPieces(this.mergedFont, this.fontData.characters);
-            console.log("Characters cut into individual blobs.");
-        } else {
-            console.warn("Font data or characters array not found, skipping character cutting.");
-        }
-
-    }
-    async fontRenderer(previewArea){
-        if(fontInstance.charURLs.length > 0){
-            while(fontInstance.charURLs[0]){
-                URL.revokeObjectURL(fontInstance.charURLs[0]);
-                fontInstance.charURLs.shift();
-
-            }
-        }
-        await imageUtil.cutImageBlobToPieces(this.mergedFont, this.fontData.characters)
-        previewArea.innerHTML = '';
-        let inputField = document.getElementById('livePreviewInput');
-        let inputArray = inputField.value.split('');
-        let zValue = 0;
-        let widthAccumulator = 0
-        inputArray.forEach((char, index) => {
-            let img = document.createElement('img');
-            let charInstance = fontInstance.fontData.characters.find(charObj => charObj.character === char);
-
-            if(char === " "){ //If the char is a space
-                let spaceDiv = document.createElement('div');
-                spaceDiv.style.width = `${fontInstance.spaceValue}px`;
-                spaceDiv.style.height = `${fontInstance.fontData.characters[0].rect[3]}px`;
-                spaceDiv.style.display = 'inline-block';
-                spaceDiv.style.position = 'relative';
-                previewArea.appendChild(spaceDiv);
-                let previousChar = spaceDiv.previousElementSibling;
-                if(previousChar instanceof HTMLDivElement){ //And if the previous one is also a space
-                    spaceDiv.style.left = previousChar.style.left;
-                } else {
-                    spaceDiv.style.left = `-${widthAccumulator}px`;
-                    widthAccumulator += fontInstance.spaceValue;
-                }
-            }
-            else{
-                let url = URL.createObjectURL(charInstance.charImage);
-                img.src = url;
-                fontInstance.charURLs.push(url)
-                img.style.position = 'relative';
-                img.dataset.nextcharmoveleft = charInstance.rect[2] - charInstance.width;
-                img.style.zIndex = zValue++;
-
-                previewArea.appendChild(img);
-                let previousChar = img.previousElementSibling;
-                if(!previousChar){//If the character is the first one
-                    img.style.left = `${charInstance.offset[0]+(charInstance.rect[2] - charInstance.width)}px`;
-                }
-                if(previousChar instanceof HTMLImageElement){ //If there's a character before
-
-                    //Handle kerning
-                    //Find if this one and the previous one form an existent kerning pair
-                    let charPair = `${inputArray[index - 1]}${char}`;
-                    if (fontInstance.fontData.kerning && charPair in fontInstance.fontData.kerning) {
-                        const kerningValue = fontInstance.fontData.kerning[charPair];
-                        console.log(`${charPair}: ${kerningValue}`);
-                        widthAccumulator -= kerningValue; // <-- minus instead of plus
-                    }
-                    img.style.left = `${(widthAccumulator - charInstance.offset[0]) * (-1)}px`;
-                    widthAccumulator += ((charInstance.rect[2]  - charInstance.width));
-
-                }
-                else if(previousChar instanceof HTMLDivElement){ //If there's a space before
-                    img.style.left = `-${widthAccumulator - charInstance.offset[0]-fontInstance.spaceValue}px`;
-                    widthAccumulator += ((charInstance.rect[2]  - charInstance.width)-fontInstance.spaceValue);
-                }
-            }
-        })
-        // If magnification is active, update the magnified view as well
-        if (this.isMagnified) {
-            this.magnifyLivePreview(previewArea);
-        }
-    }
-    createFontPreview() {
-        let fontPreviewArea;
-        // Remove previous image preview if it exists
-        const existingPreview = document.getElementById('imageWindow');
-        if (existingPreview) {
-            // Clean up any object URLs to prevent memory leaks
-            const images = existingPreview.querySelectorAll('img');
-            Array.from(images).forEach(img => {
-                URL.revokeObjectURL(img.src);
-            });
-            existingPreview.remove();
-        }
-
-        const scrollDiv = document.createElement('div');
-        scrollDiv.id = "imageWindow";
-        scrollDiv.style.cssText = `
-    height: 100px;
-    overflow-x: auto;
-    overflow-y: hidden;
-    white-space: nowrap;
-    background-color: lightgrey;
-    border: 1px solid black;
-    padding: 10px 0;
-    display: inline-block;
-`;
-
-        // Create a container for overlapped images
-        const imageContainer = document.createElement('div');
-        imageContainer.style.cssText = `
-    position: relative;
-    height: 100%;
-    display: inline-block;
-`;
-
-        // No need to wait for mergedFont - we know it's ready because
-        // createFontPreview is only called after mergeFontImages resolves
-
-        const img = document.createElement('img');
-        console.log(this.mergedFont);
-
-        if (this.mergedFont) {
-            img.style.height = '100%'; // Make image fill container height
-            img.src = URL.createObjectURL(this.mergedFont);
-            imageContainer.appendChild(img);
-            scrollDiv.appendChild(imageContainer);
-
-            // Set container width based on the natural aspect ratio of images
-            const firstImg = imageContainer.querySelector('img');
-            firstImg.onload = () => {
-                const aspectRatio = firstImg.naturalWidth / firstImg.naturalHeight;
-                const containerHeight = scrollDiv.clientHeight - 20; // subtract padding
-                const renderedWidth = containerHeight * aspectRatio;
-                imageContainer.style.width = `${renderedWidth}px`;
-                scrollDiv.style.width = `${Math.min(renderedWidth, 700)}px`;
-            };
-
-            // Get the upload element
-            const uploadElement = document.getElementById('uploadfiles');
-            const parent = uploadElement.parentElement;
-
-            // Set up or reuse the top row container
-            let topRow = document.getElementById('topRowContainer');
-
-            if (!topRow) {
-                topRow = document.createElement('div');
-                topRow.id = 'topRowContainer';
-
-                topRow.style.cssText = `
-            display: flex;
-            gap: 10px;
-            align-items: start;
-            margin-bottom: 20px;
-        `;
-                topRow.style.position = 'sticky';
-                topRow.style.top = '10px';
-                topRow.style.zIndex = '1000';
-                parent.insertBefore(topRow, parent.firstChild);
-                topRow.appendChild(uploadElement);
-            }
-
-            // Create a column for the previews to sit in
-            let previewColumn = document.getElementById('previewColumn');
-            if (!previewColumn) {
-                previewColumn = document.createElement('div');
-                previewColumn.id = 'previewColumn';
-                previewColumn.style.cssText = `
-                    display: flex;
-                    flex-direction: column;
-                    gap: 10px;
-                `;
-                topRow.appendChild(previewColumn);
-            }
-
-            // Add the image preview to the column
-            previewColumn.appendChild(scrollDiv);
-
-            // Make upload area twice the height of the preview
-            uploadElement.style.height = `${scrollDiv.getBoundingClientRect().height * 2}px`;
-
-            fontPreviewArea = this.createLivePreviewElement();
-
-            // Cleanup object URLs on unload
-            window.addEventListener('unload', () => {
-                const images = imageContainer.getElementsByTagName('img');
-                Array.from(images).forEach(img => {
-                    URL.revokeObjectURL(img.src);
-                });
-            });
-        }
-        return fontPreviewArea;
-    }
-
-    createLivePreviewElement() {
-        const LIVE_PREVIEW_WRAPPER_ID = 'livePreviewWrapper';
-        // Remove previous live preview element if it exists
-        const existingPreview = document.getElementById(LIVE_PREVIEW_WRAPPER_ID);
-        if (existingPreview) {
-            existingPreview.remove();
-        }
-
-        // Create the main wrapper div
-        const livePreviewWrapper = document.createElement('div');
-        livePreviewWrapper.id = LIVE_PREVIEW_WRAPPER_ID;
-
-        // Try to match the width of the image preview
-        const imagePreview = document.getElementById('imageWindow');
-        const wrapperWidth = imagePreview ? imagePreview.style.width : 'auto';
-
-        livePreviewWrapper.style.cssText = `
-        display: flex;
-        flex-direction: column;
-        width: ${wrapperWidth};
-        max-width: 700px;
-    `;
-
-        // Create the div that will show the rendered text (similar to scrollDiv)
-        const livePreviewArea = document.createElement('div');
-        livePreviewArea.id = 'livePreviewArea';
-        livePreviewArea.style.cssText = `
-        height: 100px;
-        overflow-x: auto;
-        overflow-y: hidden;
-        white-space: nowrap;
-        background-color: lightgrey; /* Default background color */
-        border: 1px solid black;
-        padding: 10px 0;
-        box-sizing: border-box;
-        /* No position: relative needed here anymore for the button */
-    `;
-
-        // Create a container for the input field and buttons
-        const inputContainer = document.createElement('div');
-        inputContainer.style.cssText = `
-        display: flex; /* Use flexbox to align input and button horizontally */
-        margin-top: 5px;
-        width: 100%;
-    `;
-
-        // Create the input field
-        const inputField = document.createElement('input');
-        inputField.type = 'text';
-        inputField.id = 'livePreviewInput';
-        inputField.placeholder = 'Type here for live preview...';
-        inputField.style.cssText = `
-        flex-grow: 1; /* Allow input to take up available space */
-        padding: 5px;
-        box-sizing: border-box;
-        border: 1px solid black; /* Add border to match other elements */
-        border-right: none; /* Remove right border to blend with button */
-    `;
-
-        inputField.addEventListener('input', () => {
-            if (typeof fontInstance !== 'undefined' && fontInstance.fontRenderer) {
-                fontInstance.fontRenderer(fontInstance.fontPreviewArea);
-            } else {
-                console.warn('fontInstance or fontInstance.fontRenderer is not defined.');
-            }
-        });
-
-        // Create the color picker input (hidden)
-        const colorPickerInput = document.createElement('input');
-        colorPickerInput.type = 'color';
-        colorPickerInput.id = 'livePreviewBgColorPicker';
-        colorPickerInput.value = '#d3d3d3'; // Default color: lightgrey in hex
-        colorPickerInput.style.cssText = `
-        width: 0; /* Make it effectively invisible */
-        height: 0;
-        border: none;
-        padding: 0;
-        opacity: 0;
-        overflow: hidden;
-        position: absolute; /* Hide it completely off-screen, or make it just 0x0 */
-        pointer-events: none; /* Ensure it doesn't interfere with clicks */
-    `;
-
-        // Create a visual button overlay for the color picker
-        const colorPickerButton = document.createElement('button');
-        colorPickerButton.id = 'livePreviewBgColorButton';
-        colorPickerButton.textContent = '🎨'; // Emoji for a color palette icon
-        colorPickerButton.title = 'Change Background Color';
-        colorPickerButton.style.cssText = `
-        width: 35px; /* Adjust width as needed */
-        height: 35px; /* Match height of input field + padding */
-        background-color: #555; /* Darker background for the button */
-        border: 1px solid black; /* Match border of input field */
-        border-left: none; /* Remove left border to blend with input */
-        border-radius: 0 0 0 0; /* No rounding yet, handled by combined styling */
-        cursor: pointer;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 18px; /* Slightly larger emoji */
-        line-height: 1;
-        color: white;
-        box-sizing: border-box; /* Include padding/border in element's total width/height */
-        flex-shrink: 0; /* Prevent button from shrinking */
-    `;
-        // Event listener for the color picker input
-        colorPickerInput.addEventListener('input', (event) => {
-            livePreviewArea.style.backgroundColor = event.target.value;
-        });
-
-        // Make the button trigger the hidden color input
-        colorPickerButton.addEventListener('click', () => {
-            // Programmatically trigger the click on the hidden color input
-            colorPickerInput.click();
-        });
-
-
-        // New: Magnify Button
-        const magnifyButton = document.createElement('button');
-        magnifyButton.id = 'magnifyLivePreviewButton';
-        magnifyButton.textContent = '🔍'; // Magnifying glass emoji
-        magnifyButton.title = 'Toggle Magnified View';
-        magnifyButton.style.cssText = `
-            width: 35px; /* Adjust width as needed */
-            height: 35px; /* Match height of input field + padding */
-            background-color: #555; /* Darker background for the button */
-            border: 1px solid black; /* Match border of input field */
-            border-left: none; /* Remove left border to blend with input */
-            border-radius: 0 3px 3px 0; /* Round only the right corners for the last button */
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 18px; /* Slightly larger emoji */
-            line-height: 1;
-            color: white;
-            box-sizing: border-box; /* Include padding/border in element's total width/height */
-            flex-shrink: 0; /* Prevent button from shrinking */
-        `;
-
-        // Adjust the border-radius of the colorPickerButton to be square on the right
-        colorPickerButton.style.borderRadius = '0';
-
-        magnifyButton.addEventListener('click', () => {
-            this.isMagnified = !this.isMagnified; // Toggle magnification state
-            if (this.isMagnified) {
-                magnifyButton.style.backgroundColor = '#777'; // Indicate active state
-                this.magnifyLivePreview(livePreviewArea);
-            } else {
-                magnifyButton.style.backgroundColor = '#555'; // Reset color
-                if (this.magnifiedOverlay) {
-                    this.magnifiedOverlay.remove();
-                    this.magnifiedOverlay = null;
-                }
-            }
-        });
-
-
-        // Assemble the input container
-        inputContainer.appendChild(inputField);
-        inputContainer.appendChild(colorPickerButton); // Add the visible button
-        inputContainer.appendChild(magnifyButton); // Add the new magnify button
-        inputContainer.appendChild(colorPickerInput);  // Add the hidden color input (can be anywhere, as it's hidden)
-
-        // Assemble the main wrapper element
-        livePreviewWrapper.appendChild(livePreviewArea);
-        livePreviewWrapper.appendChild(inputContainer); // Append the new input container
-
-        // Add it to the preview column created in createFontPreview
-        const previewColumn = document.getElementById('previewColumn');
-        if (previewColumn) {
-            previewColumn.appendChild(livePreviewWrapper);
-        }
-        return livePreviewArea;
-    }
-
-    async magnifyLivePreview(elementToMagnify) {
-        if (!window.html2canvas) {
-            console.error("html2canvas library is not loaded. Please include it.");
-            return;
-        }
-
-        // Create or get the magnification overlay
-        if (!this.magnifiedOverlay) {
-            this.magnifiedOverlay = document.createElement('div');
-            this.magnifiedOverlay.id = 'magnifiedLivePreviewOverlay';
-            this.magnifiedOverlay.style.cssText = `
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background-color: rgba(0, 0, 0, 0.7);
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            z-index: 9999;
-            cursor: default;
-            overflow: hidden;
-        `;
-            // Only close if clicking on the background, not the slider or image
-            this.magnifiedOverlay.addEventListener('click', (event) => {
-                if (event.target === this.magnifiedOverlay || event.target.id === 'magnifiedImageContainer') {
-                    this.isMagnified = false;
-                    const magnifyButton = document.getElementById('magnifyLivePreviewButton');
-                    if (magnifyButton) {
-                        magnifyButton.style.backgroundColor = '#555'; // Reset button color
-                    }
-                    this.magnifiedOverlay.remove();
-                    this.magnifiedOverlay = null;
-                }
-            });
-            document.body.appendChild(this.magnifiedOverlay);
-
-            // Close Button
-            const closeButton = document.createElement('button');
-            closeButton.id = 'magnifiedCloseButton';
-            closeButton.textContent = '✖'; // Unicode multiplication sign for 'X'
-            closeButton.title = 'Close Magnified Preview';
-            closeButton.style.cssText = `
-            position: absolute;
-            top: 20px;
-            right: 20px;
-            background-color: rgba(255, 0, 0, 0.8); /* Red, slightly transparent */
-            color: white;
-            border: none;
-            border-radius: 50%; /* Make it circular */
-            width: 40px;
-            height: 40px;
-            font-size: 20px;
-            font-weight: bold;
-            cursor: pointer;
-            z-index: 10001; /* Ensure it's above everything else */
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.3);
-            transition: background-color 0.2s ease;
-        `;
-            closeButton.addEventListener('mouseenter', () => {
-                closeButton.style.backgroundColor = 'red';
-            });
-            closeButton.addEventListener('mouseleave', () => {
-                closeButton.style.backgroundColor = 'rgba(255, 0, 0, 0.8)';
-            });
-            closeButton.addEventListener('click', (event) => {
-                event.stopPropagation();
-                this.isMagnified = false;
-                const magnifyButton = document.getElementById('magnifyLivePreviewButton');
-                if (magnifyButton) {
-                    magnifyButton.style.backgroundColor = '#555';
-                }
-                this.magnifiedOverlay.remove();
-                this.magnifiedOverlay = null;
-            });
-            this.magnifiedOverlay.appendChild(closeButton);
-
-            // Container for the draggable image (this will also be our "drop target")
-            const draggableImageContainer = document.createElement('div');
-            draggableImageContainer.id = 'magnifiedImageContainer';
-            draggableImageContainer.style.cssText = `
-            position: relative;
-            width: 100%;
-            height: calc(100% - 70px); /* Leave space for the slider */
-            overflow: hidden;
-        `;
-            draggableImageContainer.ondragover = (e) => {
-                e.preventDefault();
-                e.dataTransfer.dropEffect = "move";
-            };
-            draggableImageContainer.ondrop = (e) => {
-                e.preventDefault();
-            };
-            this.magnifiedOverlay.appendChild(draggableImageContainer);
-
-            // Create the slider for scale control
-            const scaleSlider = document.createElement('input');
-            scaleSlider.type = 'range';
-            scaleSlider.min = '1';
-            scaleSlider.max = '5';
-            scaleSlider.value = '3';
-            scaleSlider.step = '0.1';
-            scaleSlider.id = 'magnifiedScaleSlider';
-            scaleSlider.style.cssText = `
-            position: absolute;
-            bottom: 20px;
-            width: 90%;
-            max-width: 500px;
-            z-index: 10000;
-            cursor: grab;
-            -webkit-appearance: none;
-            height: 8px;
-            background: #d3d3d3;
-            outline: none;
-            opacity: 0.7;
-            -webkit-transition: .2s;
-            transition: opacity .2s;
-            border-radius: 5px;
-        `;
-            scaleSlider.style.setProperty('--webkit-slider-thumb', `
-            -webkit-appearance: none;
-            appearance: none;
-            width: 25px;
-            height: 25px;
-            border-radius: 50%;
-            background: #4CAF50;
-            cursor: pointer;
-        `);
-            scaleSlider.style.setProperty('--moz-range-thumb', `
-            width: 25px;
-            height: 25px;
-            border-radius: 50%;
-            background: #4CAF50;
-            cursor: pointer;
-        `);
-            scaleSlider.style.setProperty('--moz-range-track', `
-            width: 100%;
-            height: 8px;
-            background: #d3d3d3;
-            border-radius: 5px;
-        `);
-
-            this.magnifiedOverlay.appendChild(scaleSlider);
-
-        } else {
-            const draggableImageContainer = this.magnifiedOverlay.querySelector('#magnifiedImageContainer');
-            const existingSlider = this.magnifiedOverlay.querySelector('#magnifiedScaleSlider');
-            const existingCloseButton = this.magnifiedOverlay.querySelector('#magnifiedCloseButton');
-
-            draggableImageContainer.innerHTML = '';
-
-            if (!this.magnifiedOverlay.contains(draggableImageContainer)) {
-                this.magnifiedOverlay.appendChild(draggableImageContainer);
-            }
-            if (!this.magnifiedOverlay.contains(existingSlider)) {
-                this.magnifiedOverlay.appendChild(existingSlider);
-            }
-            if (!this.magnifiedOverlay.contains(existingCloseButton)) {
-                this.magnifiedOverlay.appendChild(existingCloseButton);
-            }
-        }
-
-        const scaleSliderElement = this.magnifiedOverlay.querySelector('#magnifiedScaleSlider');
-        const draggableImageContainer = this.magnifiedOverlay.querySelector('#magnifiedImageContainer');
-        const initialScale = parseFloat(scaleSliderElement.value);
-
+    async initialize() {
         try {
-            const canvas = await html2canvas(elementToMagnify, {
-                scale: 1,
-                useCORS: true,
-                backgroundColor: elementToMagnify.style.backgroundColor || '#d3d3d3'
-            });
-
-            const img = document.createElement('img');
-            img.src = canvas.toDataURL('image/png');
-            img.draggable = true;
-            img.style.cssText = `
-            position: absolute;
-            max-width: none;
-            max-height: none;
-            border: 2px solid white;
-            box-shadow: 0 0 20px rgba(0,0,0,0.5);
-            image-rendering: pixelated;
-            cursor: grab;
-            top: 50%; /* Keep vertical centering */
-        `;
-
-            draggableImageContainer.appendChild(img);
-
-            // --- HTML Drag and Drop API implementation ---
-            let startX, startY;
-            let initialTranslateX, initialTranslateY;
-
-            img.ondragstart = (e) => {
-                e.dataTransfer.setData('text/plain', 'magnified-image');
-                e.dataTransfer.setDragImage(new Image(), 0, 0);
-
-                const transformMatch = img.style.transform.match(/translate\(([-\d.]+)px,\s*([-\d.]+)px\)/);
-                initialTranslateX = transformMatch ? parseFloat(transformMatch[1]) : 0;
-                initialTranslateY = transformMatch ? parseFloat(transformMatch[2]) : 0;
-                startX = e.clientX;
-                startY = e.clientY;
-
-                draggableImageContainer.style.cursor = 'grabbing';
-            };
-
-            img.ondrag = (e) => {
-                if (e.clientX === 0 && e.clientY === 0) return;
-
-                const dx = e.clientX - startX;
-                const dy = e.clientY - startY;
-
-                let newX = initialTranslateX + dx;
-                let newY = initialTranslateY + dy;
-
-                img.style.transform = `translate(${newX}px, ${newY}px) scale(${parseFloat(scaleSliderElement.value)})`;
-            };
-
-            img.ondragend = () => {
-                draggableImageContainer.style.cursor = 'grab';
-            };
-
-            // Add event listener to the slider to update the image scale
-            scaleSliderElement.oninput = () => {
-                const newScale = parseFloat(scaleSliderElement.value);
-                const transformMatch = img.style.transform.match(/translate\(([-\d.]+)px,\s*([-\d.]+)px\)/);
-                let currentTranslateX = transformMatch ? parseFloat(transformMatch[1]) : 0;
-                let currentTranslateY = transformMatch ? parseFloat(transformMatch[2]) : 0;
-
-                img.style.transform = `translate(${currentTranslateX}px, ${currentTranslateY}px) scale(${newScale})`;
-            };
-
-            // --- CHANGE: Position the left edge in the center of the screen ---
-            img.onload = () => {
-                const containerRect = draggableImageContainer.getBoundingClientRect();
-
-                // Calculate scaled dimensions (important for correct positioning)
-                const scaledWidth = canvas.width * initialScale;
-                const scaledHeight = canvas.height * initialScale;
-
-                // Calculate offsetX: half of the container's width (which is the center)
-                // Minus the image's current left offset (which is 0 when using transform-origin 0 0)
-                let offsetX = containerRect.width / 2;
-
-                // Calculate offsetY: half of the container's height minus half of the scaled image's height
-                let offsetY = (containerRect.height - scaledHeight) / 4;
-
-
-                // Apply initial positioning and scale
-                // We use transform-origin: 0 0; so translate(x,y) positions the top-left corner
-                img.style.transform = `translate(${offsetX}px, ${offsetY}px) scale(${initialScale})`;
-
-                // Store this initial position as the starting point for future drags
-                initialTranslateX = offsetX;
-                initialTranslateY = offsetY;
-            };
-
+            this.fontData = await this.parseFontTxt(this.text);
+            console.log("Font data parsed successfully");
+            this.mergedFontImage = await imageUtil.mergeFontImages(this.images);
+            return this; // Return the fully initialized instance
         } catch (error) {
-            console.error("Error capturing live preview for magnification:", error);
-            draggableImageContainer.innerHTML = '<p style="color: white;">Error magnifying preview. Check console for details.</p>';
+            console.error("Font initialization failed:", error);
+            throw error;
         }
     }
+
+    static async create(text, images) {
+        const font = new Font(text, images);
+        await font.initialize();
+        return font;
+    }
+
 
     async parseFontTxt(txt) {
         // Read the file content with Windows-1251 encoding
@@ -799,17 +145,13 @@ class Font {
 
             // Create character objects
             for (let i = 0; i < charList.length; i++) {
-                if (i < widthList.length && i < rectList.length) {
+                if (charList[i] !== ' ' && charList[i] !== ' ') {
                     const charObj = {
                         character: charList[i],
                         width: widthList[i],
-                        rect: rectList[i]
+                        rect: rectList[i],
+                        offset: offsetList[i]
                     };
-
-                    // Add offset if available for this character
-                    if (offsetList.length > 0 && i < offsetList.length) {
-                        charObj.offset = offsetList[i];
-                    }
 
                     result.characters.push(charObj);
                 }
@@ -1040,8 +382,334 @@ class Font {
         return serializedString;
     }
 
+}
+
+class FontUI {
+    constructor(fontInstance) {
+        window.fontUI = this
+        this.fontInstance = fontInstance;
+        this.charImgURLs = [];
+        this.isMagnified = false; // New property to track magnification state
+        this.magnifiedOverlay = null; // New property to hold the magnification overlay
+        // this.mergedFont; set in InitializeFontUI()
+        // this.fontPreviewArea; set in InitializeFontUI()
+
+        this.setupBasicUI();
+
+    }
+
+    setupBasicUI() {
+        // Set up download button and other basic UI elements
+        this.downloadButton = document.createElement('button');
+        this.downloadButton.textContent = "Save file";
+        this.downloadButton.id = "downloadButton";
+
+        this.downloadButton.onclick = () => {
+            this.downloadSerializedFontFile(this.fontInstance.text.name);
+        };
+        UPLOADFILES.appendChild(this.downloadButton);
+    }
+
+    static async create(fontInstance) {
+        const ui = new FontUI(fontInstance);
+        await ui.initializeFontUI();
+        return ui;
+    }
+
+    async initializeFontUI() {
+        try {
+            this.fontPreviewArea = this.createFontPreview();
+            console.log(`font preview area: ${this.fontPreviewArea}`);
+
+            console.dir(this.fontInstance);
+
+            // Draw tables after font data is available
+            await drawTable(this);
+
+            // Cut font to chars using the MERGED font
+            if (this.fontInstance && this.fontInstance.fontData.characters) {
+                await imageUtil.cutFontImageToChars(
+                    this.fontInstance.mergedFontImage,
+                    this.fontInstance.fontData.characters
+                );
+                console.log("Characters cut into individual blobs.");
+            } else {
+                console.warn("Font data or characters array not found, skipping character cutting.");
+            }
+
+            return this;
+        } catch (error) {
+            console.error("Failed to initialize FontUI:", error);
+            throw error;
+        }
+    }
+
+
+    createFontPreview() {
+        let fontPreviewArea;
+        // Remove the previous image preview if it exists
+        const existingPreview = document.getElementById('imageWindow');
+        if (existingPreview) {
+            // Clean up any object URLs to prevent memory leaks
+            const images = existingPreview.querySelectorAll('img');
+            Array.from(images).forEach(img => {
+                URL.revokeObjectURL(img.src);
+            });
+            existingPreview.remove();
+            console.log("Removed existing image preview.");
+        }
+
+        const scrollDiv = document.createElement('div');
+        scrollDiv.id = "imageWindow";
+
+        // Create a container for overlapped images
+        const imageContainer = document.createElement('div');
+
+        // No need to wait for the mergedFont - we know it's ready because
+        // createFontPreview is only called after mergeFontImages resolves
+
+        const img = document.createElement('img');
+        console.log(this.fontInstance.mergedFontImage);
+
+        if (this.fontInstance.mergedFontImage) {
+            img.src = URL.createObjectURL(this.fontInstance.mergedFontImage);
+            imageContainer.appendChild(img);
+            scrollDiv.appendChild(imageContainer);
+
+            // Set container width based on the natural aspect ratio of images
+            const firstImg = imageContainer.querySelector('img');
+            firstImg.onload = () => {
+                const aspectRatio = firstImg.naturalWidth / firstImg.naturalHeight;
+                const containerHeight = scrollDiv.clientHeight; // subtract padding
+
+                const renderedWidth = containerHeight * aspectRatio;
+                imageContainer.style.width = `${renderedWidth}px`;
+                scrollDiv.style.width = `${Math.min(renderedWidth, 700)}px`;
+                const scrollbarHeight = scrollDiv.offsetHeight - scrollDiv.clientHeight;
+                img.style.height = `${scrollDiv.offsetHeight-scrollbarHeight}px`; // Make image fill container height
+                img.style.bottom = '10px';
+            };
+
+            // Get the upload element
+            const uploadElement = document.getElementById('uploadfiles');
+            const parent = uploadElement.parentElement;
+
+            // Set up or reuse the top row container
+            let topRow = document.getElementById('topRowContainer');
+
+            if (!topRow) {
+                topRow = document.createElement('div');
+                topRow.id = 'topRowContainer';
+                parent.insertBefore(topRow, parent.firstChild);
+                topRow.appendChild(uploadElement);
+            }
+
+            // Create a column for the previews to sit in
+            let previewColumn = document.getElementById('previewColumn');
+            if (!previewColumn) {
+                previewColumn = document.createElement('div');
+                previewColumn.id = 'previewColumn';
+                topRow.appendChild(previewColumn);
+            }
+
+            // Add the image preview to the column
+            previewColumn.appendChild(scrollDiv);
+
+            // Make the upload area twice the height of the preview
+            uploadElement.style.height = `${scrollDiv.getBoundingClientRect().height * 2}px`;
+
+            fontPreviewArea = this.createLivePreviewElement();
+
+            // Cleanup object URLs on unload
+            window.addEventListener('unload', () => {
+                const images = imageContainer.getElementsByTagName('img');
+                Array.from(images).forEach(img => {
+                    URL.revokeObjectURL(img.src);
+                });
+            });
+        }
+        return fontPreviewArea;
+    }
+    
+    async fontRenderer(previewArea){
+        if(this.charImgURLs.length > 0){
+            while(this.charImgURLs[0]){
+                URL.revokeObjectURL(this.charImgURLs[0]);
+                this.charImgURLs.shift();
+
+            }
+        }
+        //Need to do this only if fontData was edited
+        await imageUtil.cutFontImageToChars(this.fontInstance.mergedFontImage, this.fontInstance.fontData.characters)
+        previewArea.innerHTML = '';
+        let inputField = document.getElementById('livePreviewInput');
+        let inputArray = inputField.value.split('');
+        let zValue = 0;
+        let widthAccumulator = 0
+        inputArray.forEach((char, index) => {
+            let img = document.createElement('img');
+            let charInstance = fontInstance.fontData.characters.find(charObj => charObj.character === char);
+
+            if(char === " "){ //If the char is a space
+                let spaceDiv = document.createElement('div');
+                spaceDiv.id = "space";
+                previewArea.appendChild(spaceDiv);
+                let previousChar = spaceDiv.previousElementSibling;
+                if(previousChar instanceof HTMLDivElement){ //And if the previous one is also a space
+                    spaceDiv.style.left = previousChar.style.left;
+                } else {
+                    spaceDiv.style.left = `-${widthAccumulator}px`;
+                    widthAccumulator += fontInstance.spaceValue;
+                }
+            }
+            else{
+                let url = URL.createObjectURL(charInstance.charImage);
+                console.log(url);
+                img.src = url;
+                this.charImgURLs.push(url)
+                img.style.position = 'relative';
+                img.dataset.nextcharmoveleft = (charInstance.rect[2] - charInstance.width).toString();
+                img.style.zIndex = (zValue++).toString();
+
+                previewArea.appendChild(img);
+                let previousChar = img.previousElementSibling;
+                if(!previousChar){//If the character is the first one
+                    img.style.left = `${charInstance.offset[0]+(charInstance.rect[2] - charInstance.width)}px`;
+                }
+                if(previousChar instanceof HTMLImageElement){ //If there's a character before
+
+                    //Handle kerning
+                    //Find if this one and the previous one form an existent kerning pair
+                    let charPair = `${inputArray[index - 1]}${char}`;
+                    if (fontInstance.fontData.kerning && charPair in fontInstance.fontData.kerning) {
+                        const kerningValue = fontInstance.fontData.kerning[charPair];
+                        console.log(`${charPair}: ${kerningValue}`);
+                        widthAccumulator -= kerningValue; // <-- minus instead of plus
+                    }
+                    img.style.left = `${(widthAccumulator - charInstance.offset[0]) * (-1)}px`;
+                    widthAccumulator += ((charInstance.rect[2]  - charInstance.width));
+
+                }
+                else if(previousChar instanceof HTMLDivElement){ //If there's a space before
+                    img.style.left = `-${widthAccumulator - charInstance.offset[0]-fontInstance.spaceValue}px`;
+                    widthAccumulator += ((charInstance.rect[2]  - charInstance.width)-fontInstance.spaceValue);
+                }
+            }
+        })
+        // If magnification is active, update the magnified view as well
+        if (this.isMagnified) {
+            await this.magnifyLivePreview(previewArea);
+        }
+    }
+
+    createLivePreviewElement() {
+        let fontUIInstance = this;
+        const LIVE_PREVIEW_WRAPPER_ID = 'livePreviewWrapper';
+        // Remove previous live preview element if it exists
+        const existingPreview = document.getElementById(LIVE_PREVIEW_WRAPPER_ID);
+        if (existingPreview) {
+            existingPreview.remove();
+        }
+
+        // Create the main wrapper div
+        const livePreviewWrapper = document.createElement('div');
+        livePreviewWrapper.id = LIVE_PREVIEW_WRAPPER_ID;
+
+        // Try to match the width of the image preview
+        const imagePreview = document.getElementById('imageWindow');
+        livePreviewWrapper.style.width = imagePreview ? imagePreview.style.width : 'auto';
+
+        // Create the div that will show the rendered text (similar to scrollDiv)
+        const livePreviewArea = document.createElement('div');
+        livePreviewArea.id = 'livePreviewArea';
+
+        // Create a container for the input field and buttons
+        const inputContainer = document.createElement('div');
+        inputContainer.id = 'livePreviewInputContainer';
+
+        // Create the input field
+        const inputField = document.createElement('input');
+        inputField.type = 'text';
+        inputField.id = 'livePreviewInput';
+        inputField.placeholder = 'Type here for live preview...';
+
+        inputField.addEventListener('input', () => {
+            if (typeof fontUIInstance.fontInstance !== 'undefined' && fontUIInstance.fontRenderer) {
+                console.dir(fontUIInstance);
+                console.log(fontUIInstance.fontPreviewArea)
+                fontUIInstance.fontRenderer(fontUIInstance.fontPreviewArea);
+            } else {
+                console.warn('fontInstance or fontInstance.fontRenderer is not defined.');
+            }
+        });
+
+        // Create the color picker input (hidden)
+        const colorPickerInput = document.createElement('input');
+        colorPickerInput.type = 'color';
+        colorPickerInput.id = 'livePreviewBgColorPicker';
+        colorPickerInput.value = '#d3d3d3'; // Default color: lightgrey in hex
+
+        // Create a visual button overlay for the color picker
+        const colorPickerButton = document.createElement('button');
+        colorPickerButton.id = 'livePreviewBgColorButton';
+        colorPickerButton.textContent = '🎨'; // Emoji for a color palette icon
+        colorPickerButton.title = 'Change Background Color';
+        // Event listener for the color picker input
+        colorPickerInput.addEventListener('input', (event) => {
+            livePreviewArea.style.backgroundColor = event.target.value;
+        });
+
+        // Make the button trigger the hidden color input
+        colorPickerButton.addEventListener('click', () => {
+            // Programmatically trigger the click on the hidden color input
+            colorPickerInput.click();
+        });
+
+
+        // New: Magnify Button
+        const magnifyButton = document.createElement('button');
+        magnifyButton.id = 'magnifyLivePreviewButton';
+        magnifyButton.textContent = '🔍'; // Magnifying glass emoji
+        magnifyButton.title = 'Toggle Magnified View';
+
+        // Adjust the border-radius of the colorPickerButton to be square on the right
+        colorPickerButton.style.borderRadius = '0';
+
+        magnifyButton.addEventListener('click', () => {
+            fontUIInstance.isMagnified = !fontUIInstance.isMagnified; // Toggle magnification state
+            if (fontUIInstance.isMagnified) {
+                magnifyButton.style.backgroundColor = '#777'; // Indicate active state
+                fontUIInstance.magnifyLivePreview(livePreviewArea);
+            } else {
+                magnifyButton.style.backgroundColor = '#555'; // Reset color
+                if (fontUIInstance.magnifiedOverlay) {
+                    fontUIInstance.magnifiedOverlay.remove();
+                    fontUIInstance.magnifiedOverlay = null;
+                }
+            }
+        });
+
+
+        // Assemble the input container
+        inputContainer.appendChild(inputField);
+        inputContainer.appendChild(colorPickerButton); // Add the visible button
+        inputContainer.appendChild(magnifyButton); // Add the new magnify button
+        inputContainer.appendChild(colorPickerInput);  // Add the hidden color input (can be anywhere, as it's hidden)
+
+        // Assemble the main wrapper element
+        livePreviewWrapper.appendChild(livePreviewArea);
+        livePreviewWrapper.appendChild(inputContainer); // Append the new input container
+
+        // Add it to the preview column created in createFontPreview
+        const previewColumn = document.getElementById('previewColumn');
+        if (previewColumn) {
+            previewColumn.appendChild(livePreviewWrapper);
+        }
+        return livePreviewArea;
+    }
+
     downloadSerializedFontFile(originalFileName) {
-        const serializedContent = this.serializeFontData();
+        const serializedContent = this.fontInstance.serializeFontData();
         const blob = new Blob([windows1251.encode(serializedContent)], {
             type: 'text/plain;charset=windows-1251'
         });
@@ -1050,85 +718,273 @@ class Font {
         const a = document.createElement('a');
         a.href = URL.createObjectURL(blob);
         // Ensure the filename ends with .txt
-        const fileName = originalFileName.endsWith('.txt') ? originalFileName : `${originalFileName}.txt`;
-        a.download = fileName;
+        a.download = originalFileName.endsWith('.txt') ? originalFileName : `${originalFileName}.txt`;
 
-        // Append to body and click it programmatically
+        // Append to the body and click it programmatically
         document.body.appendChild(a);
         a.click();
         // Clean up
         document.body.removeChild(a);
         URL.revokeObjectURL(a.href);
     }
-}
 
-// Fix the file input event handler to properly handle files
-FILEINPUT.onchange = (event) => {
-    handleFileSelection(event);
-};
-
-// Add this function to handle file selection
-function handleFileSelection(event) {
-    let downloadButton = document.getElementById('downloadButton');
-    if (downloadButton) {
-        downloadButton.remove()
-    }
-    // Clear the previous file list
-    FILESLIST.innerHTML = '';
-
-    // Remove the previous image preview if it exists
-    const existingPreview = document.getElementById('imageWindow');
-    if (existingPreview) {
-        // Clean up any object URLs to prevent memory leaks
-        const images = existingPreview.querySelectorAll('img');
-        Array.from(images).forEach(img => {
-            URL.revokeObjectURL(img.src);
-        });
-        existingPreview.remove();
-    }
-
-    let fontImages = [];
-    let fontText;
-    let fontName;
-    fontFiles = event.target.files;
-
-    for (let file of fontFiles) {
-        console.log(file.type);
-        if (file.type === "text/plain") {
-            fontName = file.name.replace(".txt", "");
-            fontText = file;
+    async magnifyLivePreview(elementToMagnify) {
+        if (!window.html2canvas) {
+            console.error("html2canvas library is not loaded. Please include it.");
+            return;
         }
-        if (file.type === "image/png") {
-            fontImages.push(file);
-        }
-    }
 
-    if (fontImages.length > 0 && fontText) {
-        for (let image of fontImages) {
-            if (!image.name.includes(fontName)) {
-                FINEINPUTLABEL.innerHTML = "One or all of the image file names do not match the .txt file name <br>";
-                FILEINPUT.value = null;
-                return;
-            }
-        }
-        if (fontText) {
+        // Create or get the magnification overlay
+        if (!this.magnifiedOverlay) {
+            this.magnifiedOverlay = document.createElement('div');
+            this.magnifiedOverlay.id = 'magnifiedLivePreviewOverlay';
 
-            let txtName = document.createElement("li");
-            txtName.textContent = fontText.name;
-            FILESLIST.appendChild(txtName);
+            // Only close if clicking on the background, not the slider or image
+            this.magnifiedOverlay.addEventListener('click', (event) => {
+                if (event.target === this.magnifiedOverlay || event.target.id === 'magnifiedImageContainer') {
+                    this.isMagnified = false;
+                    const magnifyButton = document.getElementById('magnifyLivePreviewButton');
+                    if (magnifyButton) {
+                        magnifyButton.style.backgroundColor = '#555'; // Reset button color
+                    }
+                    this.magnifiedOverlay.remove();
+                    this.magnifiedOverlay = null;
+                }
+            });
+            document.body.appendChild(this.magnifiedOverlay);
 
-            for (let image of fontImages) {
-                let imgName = document.createElement("li");
-                imgName.textContent = image.name;
-                FILESLIST.appendChild(imgName);
-            }
+            // Close Button
+            const closeButton = document.createElement('button');
+            closeButton.id = 'magnifiedCloseButton';
+            closeButton.textContent = '✖'; // Unicode multiplication sign for 'X'
+            closeButton.title = 'Close Magnified Preview';
+            closeButton.addEventListener('mouseenter', () => {
+                closeButton.style.backgroundColor = 'red';
+            });
+            closeButton.addEventListener('mouseleave', () => {
+                closeButton.style.backgroundColor = 'rgba(255, 0, 0, 0.8)';
+            });
+            closeButton.addEventListener('click', (event) => {
+                event.stopPropagation();
+                this.isMagnified = false;
+                const magnifyButton = document.getElementById('magnifyLivePreviewButton');
+                if (magnifyButton) {
+                    magnifyButton.style.backgroundColor = '#555';
+                }
+                this.magnifiedOverlay.remove();
+                this.magnifiedOverlay = null;
+            });
+            this.magnifiedOverlay.appendChild(closeButton);
 
-            FINEINPUTLABEL.innerHTML = "Files Selected <br>";
-            fontInstance = new Font(fontText, fontImages);
-            //window.fontInstance = fontInstance;
+            // Container for the draggable image (this will also be our "drop target")
+            const draggableImageContainer = document.createElement('div');
+            draggableImageContainer.id = 'magnifiedImageContainer';
+            draggableImageContainer.ondragover = (e) => {
+                e.preventDefault();
+                e.dataTransfer.dropEffect = "move";
+            };
+            draggableImageContainer.ondrop = (e) => {
+                e.preventDefault();
+            };
+            this.magnifiedOverlay.appendChild(draggableImageContainer);
+
+            // Create the slider for scale control
+            const scaleSlider = document.createElement('input');
+            scaleSlider.type = 'range';
+            scaleSlider.min = '1';
+            scaleSlider.max = '5';
+            scaleSlider.value = '3';
+            scaleSlider.step = '0.1';
+            scaleSlider.id = 'magnifiedScaleSlider';
+
+            this.magnifiedOverlay.appendChild(scaleSlider);
+
         } else {
-            FINEINPUTLABEL.innerHTML = "Please select a .txt file <br>";
-            FILEINPUT.value = null;
+            const draggableImageContainer = this.magnifiedOverlay.querySelector('#magnifiedImageContainer');
+            const existingSlider = this.magnifiedOverlay.querySelector('#magnifiedScaleSlider');
+            const existingCloseButton = this.magnifiedOverlay.querySelector('#magnifiedCloseButton');
+
+            draggableImageContainer.innerHTML = '';
+
+            if (!this.magnifiedOverlay.contains(draggableImageContainer)) {
+                this.magnifiedOverlay.appendChild(draggableImageContainer);
+            }
+            if (!this.magnifiedOverlay.contains(existingSlider)) {
+                this.magnifiedOverlay.appendChild(existingSlider);
+            }
+            if (!this.magnifiedOverlay.contains(existingCloseButton)) {
+                this.magnifiedOverlay.appendChild(existingCloseButton);
+            }
+        }
+
+        const scaleSliderElement = this.magnifiedOverlay.querySelector('#magnifiedScaleSlider');
+        const draggableImageContainer = this.magnifiedOverlay.querySelector('#magnifiedImageContainer');
+        const initialScale = parseFloat(scaleSliderElement.value);
+
+        try {
+            const canvas = await html2canvas(elementToMagnify, {
+                scale: 1,
+                useCORS: true,
+                backgroundColor: elementToMagnify.style.backgroundColor || '#d3d3d3'
+            });
+
+            const img = document.createElement('img');
+            img.src = canvas.toDataURL('image/png');
+            img.draggable = true;
+            img.id = "magnifiedImage";
+
+            draggableImageContainer.appendChild(img);
+
+            // --- HTML Drag and Drop API implementation ---
+            let startX, startY;
+            let initialTranslateX, initialTranslateY;
+
+            img.ondragstart = (e) => {
+                e.dataTransfer.setData('text/plain', 'magnified-image');
+                e.dataTransfer.setDragImage(new Image(), 0, 0);
+
+                const transformMatch = img.style.transform.match(/translate\(([-\d.]+)px,\s*([-\d.]+)px\)/);
+                initialTranslateX = transformMatch ? parseFloat(transformMatch[1]) : 0;
+                initialTranslateY = transformMatch ? parseFloat(transformMatch[2]) : 0;
+                startX = e.clientX;
+                startY = e.clientY;
+
+                draggableImageContainer.style.cursor = 'grabbing';
+            };
+
+            img.ondrag = (e) => {
+                if (e.clientX === 0 && e.clientY === 0) return;
+
+                const dx = e.clientX - startX;
+                const dy = e.clientY - startY;
+
+                let newX = initialTranslateX + dx;
+                let newY = initialTranslateY + dy;
+
+                img.style.transform = `translate(${newX}px, ${newY}px) scale(${parseFloat(scaleSliderElement.value)})`;
+            };
+
+            img.ondragend = () => {
+                draggableImageContainer.style.cursor = 'grab';
+            };
+
+            // Add event listener to the slider to update the image scale
+            scaleSliderElement.oninput = () => {
+                const newScale = parseFloat(scaleSliderElement.value);
+                const transformMatch = img.style.transform.match(/translate\(([-\d.]+)px,\s*([-\d.]+)px\)/);
+                let currentTranslateX = transformMatch ? parseFloat(transformMatch[1]) : 0;
+                let currentTranslateY = transformMatch ? parseFloat(transformMatch[2]) : 0;
+
+                img.style.transform = `translate(${currentTranslateX}px, ${currentTranslateY}px) scale(${newScale})`;
+            };
+
+            // --- CHANGE: Position the left edge in the center of the screen ---
+            img.onload = () => {
+                const containerRect = draggableImageContainer.getBoundingClientRect();
+
+                // Calculate scaled dimensions (important for correct positioning)
+                const scaledHeight = canvas.height * initialScale;
+
+                // Calculate offsetX: half of the container's width (which is the center)
+                // Minus the image's current left offset (which is 0 when using transform-origin 0 0)
+                let offsetX = containerRect.width / 2;
+
+                // Calculate offsetY: half of the container's height minus half of the scaled image's height
+                let offsetY = (containerRect.height - scaledHeight) / 4;
+
+
+                // Apply initial positioning and scale
+                // We use transform-origin: 0 0; so translate(x,y) positions the top-left corner
+                img.style.transform = `translate(${offsetX}px, ${offsetY}px) scale(${initialScale})`;
+
+                // Store this initial position as the starting point for future drags
+                initialTranslateX = offsetX;
+                initialTranslateY = offsetY;
+            };
+
+        } catch (error) {
+            console.error("Error capturing live preview for magnification:", error);
+            draggableImageContainer.innerHTML = '<p style="color: white;">Error magnifying preview. Check console for details.</p>';
         }
     }
 }
+
+// Loading state management functions
+function showLoadingState() {
+    const loadingIndicator = document.createElement('div');
+    loadingIndicator.id = 'loading-indicator';
+    loadingIndicator.textContent = 'Processing font...';
+    document.body.appendChild(loadingIndicator);
+}
+
+function hideLoadingState() {
+    const indicator = document.getElementById('loading-indicator');
+    if (indicator) {
+        indicator.remove();
+    }
+}
+
+// Main function to handle font upload and initialization
+async function handleFontUpload(textFile, imageFiles) {
+    try {
+        // Show loading indicator
+        showLoadingState();
+
+        // Create and initialize Font instance using the static factory method
+        const font = await Font.create(textFile, imageFiles);
+
+        // Create and initialize FontUI with the fully loaded Font
+        const fontUI = await FontUI.create(font);
+
+        // Store references if needed
+        window.fontInstance = font;
+        window.fontUI = fontUI;
+
+        // Hide loading indicator
+        hideLoadingState();
+        FILEINPUTLABEL.innerHTML = '';
+        let fileNameList = [];
+        fileNameList.push(textFile.name);
+        imageFiles.forEach(imageFile => {
+            fileNameList.push(imageFile.name)
+        })
+        fileNameList.forEach((fileName) => {
+            let listElement = document.createElement('li');
+            listElement.textContent = fileName;
+            FILESLIST.appendChild(listElement);
+        })
+    } catch (error) {
+        console.error("Failed to process font:", error);
+        alert(`Error processing font: ${error.message}`);
+        hideLoadingState();
+    }
+}
+
+// Event listener for file input
+FILEINPUT.addEventListener('change', function(event) {
+    const files = Array.from(event.target.files);
+
+    // Find the text file (font data)
+    const textFile = files.find(file => file.name.endsWith('.txt'));
+
+    // Find image files
+    const imageFiles = files.filter(file =>
+        file.type.startsWith('image/') ||
+        file.name.endsWith('.png') ||
+        file.name.endsWith('.jpg') ||
+        file.name.endsWith('.jpeg')
+    );
+
+    if (!textFile) {
+        alert('Please include a font data (.txt) file.');
+        return;
+    }
+
+    if (imageFiles.length === 0) {
+        alert('Please include at least one image file.');
+        return;
+    }
+
+    // Process the files
+    handleFontUpload(textFile, imageFiles);
+});

@@ -130,7 +130,7 @@ export async function mergeFontImages(images) {
             img.src = URL.createObjectURL(sortedImages[0]);
         });
 
-        // Create canvas with dimensions from the first image
+        // Create a canvas with dimensions from the first image
         const canvas = document.createElement('canvas');
         canvas.width = firstImage.width;
         canvas.height = firstImage.height;
@@ -148,7 +148,7 @@ export async function mergeFontImages(images) {
                 img.onload = () => resolve();
                 img.onerror = () => reject(new Error(`Failed to load image: ${image.name}`));
 
-                // Check if image needs black removal
+                // Check if the image needs black removal
                 if (image.name.startsWith('_')) {
                     // Use removeBlack for images starting with underscore
                     removeBlack(image).then(processedUrl => {
@@ -180,11 +180,11 @@ export async function mergeFontImages(images) {
     }
 }
 
-export async function cutImageBlobToPieces(originalImageBlob, cutRects) {
+export async function cutFontImageToChars(originalImageBlob, characterDataArray) {
     if (!(originalImageBlob instanceof Blob)) {
         throw new TypeError("The 'originalImageBlob' argument must be a Blob.");
     }
-    if (!Array.isArray(cutRects)) {
+    if (!Array.isArray(characterDataArray)) {
         throw new TypeError("The 'cutRects' argument must be an array.");
     }
 
@@ -193,11 +193,11 @@ export async function cutImageBlobToPieces(originalImageBlob, cutRects) {
 
         // 1. Handle successful image loading
         img.onload = async () => {
-            const promises = cutRects.map(charObject => {
+            const promises = characterDataArray.map(charObject => {
                 // Ensure charObject has a rect property and it's an array of 4 numbers
                 if (!charObject.rect || !Array.isArray(charObject.rect) || charObject.rect.length !== 4) {
                     console.warn("Skipping charObject due to invalid 'rect' property:", charObject);
-                    return Promise.resolve(charObject); // Resolve with original object if rect is invalid
+                    return Promise.resolve(charObject); // Resolve with the original object if rect is invalid
                 }
 
                 const [x, y, width, height] = charObject.rect;
@@ -223,7 +223,7 @@ export async function cutImageBlobToPieces(originalImageBlob, cutRects) {
             try {
                 // Wait for all individual character image blobs to be created
                 await Promise.all(promises);
-                resolve(cutRects); // Resolve the main promise with the updated fontData.characters array
+                resolve(characterDataArray); // Resolve the main promise with the updated fontData.characters array
             } catch (error) {
                 reject(new Error("Error during character image processing: " + error.message));
             }
