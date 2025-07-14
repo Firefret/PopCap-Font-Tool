@@ -1,12 +1,18 @@
+import * as imageUtil from "./imageUtil.js";
+
 /**
  * Creates and displays a table representation of the font data
- * @param {Object} fontData - The parsed font data object containing character information
  * @returns {HTMLElement} The created table element
+ * @param fontUI
  */
-let fontGlobal;
-function drawTable(fontData) {
-    fontGlobal = fontData;
-    if (!fontData || !fontData.characters || fontData.characters.length === 0) {
+async function drawTable(fontUI) {
+    let mergedFontImage = fontUI.fontInstance.mergedFontImage;
+    let fontData = fontUI.fontInstance.fontData;
+    let characters = fontUI.fontInstance.fontData.characters;
+    let fontRenderer = fontUI.fontRenderer.bind(fontUI);
+    let fontPreviewArea = fontUI.fontInstance.fontPreviewArea;
+    
+    if (!fontData || fontData.characters.length === 0) {
         console.warn('No valid font data provided to draw table');
         return null;
     }
@@ -26,31 +32,15 @@ function drawTable(fontData) {
     // Create a container for tables to sit side by side
     const tablesContainer = document.createElement('div');
     tablesContainer.id = 'fontDataContainer';
-    tablesContainer.style.cssText = `
-        display: flex;
-        flex-wrap: wrap;
-        gap: 20px;
-        margin: 20px 0;
-    `;
     document.body.appendChild(tablesContainer);
 
-    // Create a wrapper for the characters table
+    // Create a wrapper for the character table
     const tableWrapper = document.createElement('div');
-    tableWrapper.style.cssText = `
-        flex: 1;
-        min-width: 300px;
-        max-width: 600px;
-    `;
 
     // Create table element
     const table = document.createElement('table');
     table.id = 'fontDataTable';
-    table.style.cssText = `
-        border-collapse: collapse;
-        font-family: Arial, sans-serif;
-        width: 100%;
-        box-shadow: 0 0 20px rgba(0, 0, 0, 0.15);
-    `;
+    table.className = 'data-table';
 
     // Create table header
     const thead = document.createElement('thead');
@@ -72,9 +62,6 @@ function drawTable(fontData) {
     headers.forEach(text => {
         const th = document.createElement('th');
         th.textContent = text;
-        th.style.cssText = `
-            padding: 12px 15px;
-        `;
         th.style.width = "fit-content";
         headerRow.appendChild(th);
     });
@@ -93,7 +80,6 @@ function drawTable(fontData) {
 
         // 1. Character cell
         const charCell = document.createElement('td');
-        charCell.style.padding = '12px 15px';
         if (char.character === ' ') {
             charCell.textContent = '(space)';
         } else if (char.character === '\n') {
@@ -109,54 +95,59 @@ function drawTable(fontData) {
 
         // 2. Width cell
         const widthCell = document.createElement('td');
-        widthCell.style.padding = '12px 15px';
-        widthCell.style.width = "fit-content";
         const widthValue = document.createElement("input");
         widthValue.type = "text";
         widthValue.value = char.width;
-        widthValue.addEventListener("keyup", function(event) {
-            setTimeout(()=>null, 0)
-            fontData.characters[index].width = parseInt(event.target.value);
+        widthValue.addEventListener("keyup", async function (event) {
+            setTimeout(() => null, 0)
+            characters[index].width = parseInt(event.target.value);
             console.log(fontData)
-            if (typeof fontInstance !== 'undefined' && fontInstance.fontRenderer) {
-                fontInstance.fontRenderer(fontInstance.fontPreviewArea);
-            }
+            imageUtil.cutFontImageToChars(mergedFontImage, characters).then(()=>{
+                if (typeof fontInstance !== 'undefined' && fontRenderer) {
+                    fontRenderer(fontPreviewArea);
+                }
+            })
+
         })
+        widthCell.style.width = "fit-content";
         widthCell.appendChild(widthValue);
         row.appendChild(widthCell);
 
 
         // 3. Rectangle cell
         const rectCell = document.createElement('td');
-        rectCell.style.padding = '12px 15px';
-        rectCell.style.width = "fit-content";
         const rectValue = document.createElement("input");
         rectValue.type = "text";
         rectValue.value = char.rect.join(', '); // Join array elements for display
         rectValue.addEventListener("keyup", function(event) {
             fontData.characters[index].rect = event.target.value.split(",").map(Number); // Ensure numbers
             console.log(fontData)
-            if (typeof fontInstance !== 'undefined' && fontInstance.fontRenderer) {
-                fontInstance.fontRenderer(fontInstance.fontPreviewArea);
-            }
+            imageUtil.cutFontImageToChars(mergedFontImage, characters).then(()=>{
+                if (typeof fontInstance !== 'undefined' && fontRenderer) {
+                    fontRenderer(fontPreviewArea).then(() => console.log(`Font rerendered`));
+                }
+            })
         })
+        rectCell.style.width = "fit-content";
         rectCell.appendChild(rectValue);
         row.appendChild(rectCell);
 
         // 4. Offset cell (if applicable)
         if (hasOffsets) {
             const offsetCell = document.createElement('td');
-            offsetCell.style.padding = '12px 15px';
             const offsetValue = document.createElement("input");
+            offsetCell.style.width = "fit-content";
             offsetValue.type = "text";
             offsetValue.value = char.offset ? char.offset.join(', ') : ''; // Handle undefined offset, join array
             offsetValue.addEventListener("keyup", function(event) {
-                fontData.characters[index].offset = event.target.value.split(",").map(Number); // Ensure numbers
+                characters[index].offset = event.target.value.split(",").map(Number); // Ensure numbers
                 console.dir(fontData);
 
-                if (typeof fontInstance !== 'undefined' && fontInstance.fontRenderer) {
-                    fontInstance.fontRenderer(fontInstance.fontPreviewArea);
-                }
+                imageUtil.cutFontImageToChars(mergedFontImage, characters).then(()=>{
+                    if (typeof fontInstance !== 'undefined' && fontRenderer) {
+                        fontRenderer(fontPreviewArea).then(() => console.log(`Font rerendered`));
+                    }
+                })
             })
             offsetCell.appendChild(offsetValue)
             row.appendChild(offsetCell)
@@ -179,48 +170,39 @@ function drawTable(fontData) {
 
     // --- Add New Character Button ---
     const addCharButton = document.createElement('button');
+    addCharButton.id = 'addCharButton';
     addCharButton.textContent = 'Add New Character';
-    addCharButton.style.cssText = `
-        margin-top: 10px;
-        padding: 8px 15px;
-        background-color: #007bff;
-        color: white;
-        border: none;
-        border-radius: 5px;
-        cursor: pointer;
-        font-size: 14px;
-        float: right;
-    `;
     addCharButton.addEventListener('click', () => {
         const charInput = prompt('Enter the new character (e.g., "A", " ", "\\n", "\\t"):');
         if (charInput !== null && charInput.length === 1) {
-            if (fontData.characters.some(c => c.character === charInput)) {
+            if (characters.some(c => c.character === charInput)) {
                 alert(`Character "${charInput}" already exists!`);
                 return;
             }
 
-            const lastChar = fontData.characters[fontData.characters.length - 1];
+            const lastChar = characters[characters.length - 1];
             const newCharData = {
                 character: charInput,
                 width: lastChar.width,
                 rect: [...lastChar.rect],
             };
-            // Ensure offset is copied only if it exists on the lastChar
+            // Ensure the offset is copied only if it exists on the lastChar
             if (hasOffsets && lastChar.offset) {
                 newCharData.offset = [...lastChar.offset];
             } else if (hasOffsets) { // If table has offset column but lastChar didn't have offset
                 newCharData.offset = [0,0]; // Default value for new offset
             }
 
-            fontData.characters.push(newCharData);
+            characters.push(newCharData);
 
             // Re-draw the entire table to reflect changes easily
             drawTable(fontData);
+            imageUtil.cutFontImageToChars(mergedFontImage, characters).then(()=>{
+                if (typeof fontInstance !== 'undefined' && fontRenderer) {
+                    fontRenderer(fontPreviewArea).then(() => console.log(`Font rerendered`));
+                }
+            })
 
-            if (typeof fontInstance !== 'undefined' && fontInstance.fontRenderer && fontInstance.serializeFontData) {
-                fontInstance.serializeFontData();
-                fontInstance.fontRenderer(fontInstance.fontPreviewArea);
-            }
         } else if (charInput !== null) {
             alert('Please enter exactly one character.');
         }
@@ -231,7 +213,7 @@ function drawTable(fontData) {
     tablesContainer.appendChild(tableWrapper);
 
     // Call createKerningTable with the now guaranteed-to-exist fontData.kerning object
-    createKerningTable(fontData.kerning, tablesContainer);
+    createKerningTable(tablesContainer, fontUI);
 
 
     return table;
@@ -239,28 +221,24 @@ function drawTable(fontData) {
 
 /**
  * Creates and displays a table of kerning pairs
- * @param {Object} kerningData - Object with kerning pairs as keys and values as adjustments
  * @param {HTMLElement} container - Container element to append the table to
+ * @param fontUI
  * @returns {HTMLElement} The created kerning table element
  */
-function createKerningTable(kerningData, container) {
+function createKerningTable(container, fontUI) {
     // kerningData is now guaranteed to be an object due to the check in drawTable
-
     // Check if the kerning table wrapper already exists
+    let kerningData = fontUI.fontInstance.fontData.kerning;
     let kerningWrapper = container.querySelector('#kerningTableWrapper');
     let table;
     let tbody;
+    let fontRenderer = fontUI.fontRenderer.bind(fontUI);
+    let fontPreviewArea = fontUI.fontPreviewArea;
 
     if (!kerningWrapper) {
         // Create a wrapper for the kerning table if it doesn't exist
         kerningWrapper = document.createElement('div');
         kerningWrapper.id = 'kerningTableWrapper'; // Add an ID for easier selection
-        kerningWrapper.style.cssText = `
-            flex: 1;
-            min-width: 250px;
-            max-width: 400px;
-            margin-left: 150px;
-        `;
 
         // Create heading for kerning table
         const heading = document.createElement('h2');
@@ -271,12 +249,6 @@ function createKerningTable(kerningData, container) {
         // Create table element
         table = document.createElement('table');
         table.id = 'kerningDataTable';
-        table.style.cssText = `
-            border-collapse: collapse;
-            font-family: Arial, sans-serif;
-            width: 100%;
-            box-shadow: 0 0 20px rgba(0, 0, 0, 0.15);
-        `;
 
         // Create table header
         const thead = document.createElement('thead');
@@ -296,6 +268,9 @@ function createKerningTable(kerningData, container) {
             headerRow.appendChild(th);
         });
 
+        const deleteButtonRow = document.createElement('tr');
+        headerRow.appendChild(deleteButtonRow);
+
         thead.appendChild(headerRow);
         table.appendChild(thead);
 
@@ -309,17 +284,6 @@ function createKerningTable(kerningData, container) {
         const addKerningButton = document.createElement('button');
         addKerningButton.textContent = 'Add New Kerning Pair';
         addKerningButton.id = 'addKerningPairButton'; // Add an ID for easier selection
-        addKerningButton.style.cssText = `
-            margin-top: 10px;
-            padding: 8px 15px;
-            background-color: #007bff;
-            color: white;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-            font-size: 14px;
-            float: right;
-        `;
         addKerningButton.addEventListener('click', () => {
             const pairInput = prompt('Enter the new kerning pair (exactly 2 characters):');
             if (pairInput !== null) {
@@ -341,12 +305,8 @@ function createKerningTable(kerningData, container) {
                     }
                     // --- END NEW ---
 
-                    if (typeof fontInstance !== 'undefined' && fontInstance.serializeFontData) {
-                        fontInstance.serializeFontData();
-                    }
-                    if (typeof fontInstance !== 'undefined' && fontInstance.fontRenderer) {
-                        fontInstance.fontRenderer(fontInstance.fontPreviewArea);
-                    }
+                        fontRenderer(fontPreviewArea);
+
                 } else {
                     alert('Kerning pair must consist of exactly 2 characters.');
                 }
@@ -354,21 +314,21 @@ function createKerningTable(kerningData, container) {
         });
         kerningWrapper.appendChild(addKerningButton);
 
-        container.appendChild(kerningWrapper); // Append wrapper to main container
+        container.appendChild(kerningWrapper); // Append wrapper to the main container
     } else {
-        // If wrapper already exists, just get the tbody and clear it for re-population
+        // If wrapper already exists, get that tbody and clear it for re-population
         table = kerningWrapper.querySelector('#kerningDataTable');
         tbody = table.querySelector('tbody');
         tbody.innerHTML = ''; // Clear existing rows to re-populate
     }
 
-    // Populate (or re-populate) the tbody with existing kerning data
+    // Populate (or re-populate) that tbody with existing kerning data
     Object.entries(kerningData).forEach(([pair, adjustment], index) => {
-        const row = createKerningRow(pair, adjustment, kerningData, index);
+        const row = createKerningRow(pair, adjustment, fontUI, index);
         tbody.appendChild(row);
     });
 
-    // Ensure alternating row colors are correct after initial population
+    // Ensure alternating row colors are correct after the initial population
     updateKerningRowColors(tbody);
 
     return table;
@@ -376,7 +336,10 @@ function createKerningTable(kerningData, container) {
 
 
 // --- Helper function to create a single kerning row ---
-function createKerningRow(pair, adjustment, kerningData, rowIndex = null) {
+function createKerningRow(pair, adjustment, fontUI, rowIndex = null) {
+    let fontRenderer = fontUI.fontRenderer.bind(fontUI);
+    let fontPreviewArea = fontUI.fontPreviewArea;
+    const kerningData = fontUI.fontInstance.fontData.kerning;
     const row = document.createElement('tr');
     // Apply initial background color based on index if provided
     if (rowIndex !== null) {
@@ -403,23 +366,22 @@ function createKerningRow(pair, adjustment, kerningData, rowIndex = null) {
     pairValueInput.addEventListener("keyup", function(event) {
         const newPair = event.target.value;
 
+        // Always show color feedback based on length
+        if (newPair.length !== 2) {
+            pairValueInput.style.color = 'red';
+        }
+        else pairValueInput.style.color = 'black';
+        // Only proceed with renaming if the value changed
         if (newPair !== originalPair) {
             if (newPair.length !== 2) {
-                alert('Kerning pair must consist of exactly 2 characters.');
-                event.target.value = originalPair;
                 return;
             }
 
-            if (kerningData.hasOwnProperty(newPair)) {
-                alert(`Kerning pair "${newPair}" already exists! Cannot rename.`);
-                event.target.value = originalPair;
-                return;
-            }
 
+            // Rename in the kerning data
             kerningData[newPair] = kerningData[originalPair];
             delete kerningData[originalPair];
-
-            originalPair = newPair; // Update originalPair for future edits in this row
+            originalPair = newPair;
 
             console.log("Kerning pair renamed:", originalPair, "->", newPair);
             console.dir(kerningData);
@@ -428,12 +390,7 @@ function createKerningRow(pair, adjustment, kerningData, rowIndex = null) {
         const currentAdjustmentInput = pairValueInput.parentElement.nextElementSibling.lastChild;
         kerningData[originalPair] = parseInt(currentAdjustmentInput.value); // Use originalPair here
 
-        if (typeof fontInstance !== 'undefined' && fontInstance.serializeFontData) {
-            fontInstance.serializeFontData();
-        }
-        if (typeof fontInstance !== 'undefined' && fontInstance.fontRenderer) {
-            fontInstance.fontRenderer(fontInstance.fontPreviewArea);
-        }
+            fontRenderer(fontPreviewArea);
     });
     pairCell.appendChild(pairValueInput);
 
@@ -457,15 +414,47 @@ function createKerningRow(pair, adjustment, kerningData, rowIndex = null) {
             event.target.value = "0";
             kerningData[originalPair] = 0; // Use originalPair here
         }
-        if (typeof fontInstance !== 'undefined' && fontInstance.serializeFontData) {
-            fontInstance.serializeFontData();
-        }
-        if (typeof fontInstance !== 'undefined' && fontInstance.fontRenderer) {
-            fontInstance.fontRenderer(fontInstance.fontPreviewArea);
-        }
+            fontRenderer(fontPreviewArea);
+
     });
     adjustmentCell.appendChild(adjustmentValueInput);
 
+    // Delete button cell
+    const deleteCell = document.createElement('td');
+    deleteCell.style.padding = '12px 15px';
+    row.appendChild(deleteCell);
+    
+    const deleteButton = document.createElement('button');
+    deleteButton.textContent = '✖';
+    deleteButton.style.cssText = `
+        background-color: #f44336;
+        color: white;
+        border: none;
+        padding: 5px 10px;
+        border-radius: 4px;
+        cursor: pointer;
+    `;
+    deleteButton.addEventListener('click', function() {
+        // Remove the kerning pair from the kerningData object
+        delete kerningData[originalPair];
+        
+        // Remove the row from the UI
+        row.remove();
+        
+        // Update alternating row colors
+        const tbody = document.querySelector('#kerningDataTable tbody');
+        if (tbody) {
+            updateKerningRowColors(tbody);
+        }
+        
+        // Re-render the font
+        fontRenderer(fontPreviewArea);
+        
+        console.log(`Kerning pair "${originalPair}" removed`);
+    });
+    
+    deleteCell.appendChild(deleteButton);
+    
     return row;
 }
 
