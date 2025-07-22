@@ -51,7 +51,7 @@ async function drawTable(fontUI) {
     `;
 
     const headerRow = document.createElement('tr');
-    const headers = ['Character', 'Width', 'Rectangle (x, y, w, h)'];
+    const headers = ['', 'Character', 'Width', 'Rectangle (x, y, w, h)',];
 
     // Add Offset header if any character has offset data
     const hasOffsets = fontData.characters.some(char => char.offset);
@@ -77,6 +77,41 @@ async function drawTable(fontUI) {
             border-bottom: 1px solid #dddddd;
             ${index % 2 === 0 ? 'background-color: #f3f3f3;' : ''}
         `;
+        //0. Remove Row and data button
+        const deleteCell = document.createElement('td');
+        row.appendChild(deleteCell);
+
+        const deleteButton = document.createElement('button');
+        deleteButton.textContent = '✖';
+        deleteButton.style.cssText = `
+        background-color: #f44336;
+        color: white;
+        border: none;
+        padding: 5px 10px;
+        border-radius: 4px;
+        cursor: pointer;
+    `;
+        deleteButton.addEventListener('click', function() {
+            delete fontData.characters[index];
+            fontData.characters = fontData.characters.filter(c => c !== undefined);
+
+            // Remove the row from the UI
+            row.remove();
+
+            // Update alternating row colors
+            const tbody = document.querySelector('#kerningDataTable tbody');
+            if (tbody) {
+                updateKerningRowColors(tbody);
+            }
+
+            // Re-render the font
+            fontRenderer(fontPreviewArea);
+
+            console.log(`Character "${char}" removed`);
+        });
+
+        deleteCell.appendChild(deleteButton);
+
 
         // 1. Character cell
         const charCell = document.createElement('td');

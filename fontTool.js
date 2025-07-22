@@ -156,6 +156,7 @@ class Font {
                     result.characters.push(charObj);
                 }
             }
+            result.characters.sort((a, b) => a.rect[0] - b.rect[0]);
 
             // Only create kerning object if both kerning pairs and values are present
             if (sections.kerningPairs && sections.kerningValues) {
@@ -241,6 +242,7 @@ class Font {
     }
 
     serializeFontData(data = this.fontData, appendix = this.appendix) {
+        this.fontData.characters.sort((a, b) => a.rect[0] - b.rect[0]);
         let serializedString = "";
         const INDENT = "  "; // Two spaces for indentation
 
@@ -541,15 +543,20 @@ class FontUI {
         }
         //Need to do this only if fontData was edited
         await imageUtil.cutFontImageToChars(this.fontInstance.mergedFontImage, this.fontInstance.fontData.characters)
-        previewArea.innerHTML = '';
+        if (previewArea.firstChild) {
+            while (previewArea.firstChild) {
+                previewArea.removeChild(previewArea.firstChild);
+            }
+        }
         let inputField = document.getElementById('livePreviewInput');
         let inputArray = inputField.value.split('');
         let zValue = 0;
         let widthAccumulator = 0
         inputArray.forEach((char, index) => {
             let img = document.createElement('img');
-            let charInstance = fontInstance.fontData.characters.find(charObj => charObj.character === char);
 
+            let charInstance = this.fontInstance.fontData.characters.find(charObj => char === charObj.character);
+            console.dir(charInstance)
             if(char === " "){ //If the char is a space
                 let spaceDiv = document.createElement('div');
                 spaceDiv.id = "space";
